@@ -1,6 +1,6 @@
 use std::fmt::Display;
 use std::rc::Rc;
-use std::{collections::HashMap, u32};
+use std::collections::HashMap;
 
 use ast::{BinaryOp, UnaryOp};
 use value::{NativeFnPtr, State, Type, Value};
@@ -12,6 +12,12 @@ pub struct Generator {
     pub struct_map: Map<StructType>,
     pub fn_map: Map<FnType>,
     pub functions: Vec<Function>,
+}
+
+impl Default for Generator {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Generator {
@@ -64,37 +70,31 @@ impl Generator {
 
     pub fn build_struct_map(&mut self, program: &ast::Program) -> Result<()> {
         for stmt in &program.statements {
-            match stmt {
-                ast::Statement::StructDef(struct_def) => {
-                    let name = &struct_def.name;
-                    if self.struct_map.contains_key(name) {
-                        continue;
-                    }
-                    let val = StructType {
-                        name: name.to_string(),
-                        fields: Vec::new(),
-                    };
-                    self.struct_map.insert(name, val);
+            if let ast::Statement::StructDef(struct_def) = stmt {
+                let name = &struct_def.name;
+                if self.struct_map.contains_key(name) {
+                    continue;
                 }
-                _ => {}
+                let val = StructType {
+                    name: name.to_string(),
+                    fields: Vec::new(),
+                };
+                self.struct_map.insert(name, val);
             }
         }
 
         for stmt in &program.statements {
-            match stmt {
-                ast::Statement::StructDef(struct_def) => {
-                    let name = &struct_def.name;
-                    let mut fields = Vec::new();
-                    for f in &struct_def.fields {
-                        let ty = self.get_type(&f.type_.name)?;
-                        fields.push(Field {
-                            name: f.name.to_string(),
-                            ty,
-                        });
-                    }
-                    self.struct_map.get_name_mut(&name).unwrap().fields = fields;
+            if let ast::Statement::StructDef(struct_def) = stmt {
+                let name = &struct_def.name;
+                let mut fields = Vec::new();
+                for f in &struct_def.fields {
+                    let ty = self.get_type(&f.type_.name)?;
+                    fields.push(Field {
+                        name: f.name.to_string(),
+                        ty,
+                    });
                 }
-                _ => {}
+                self.struct_map.get_name_mut(name).unwrap().fields = fields;
             }
         }
         Ok(())
@@ -300,48 +300,13 @@ impl Generator {
         })
     }
 
-    pub fn compile_fn(
+    pub fn compile_block(
         &mut self,
-        name: &str,
-        args: &[ast::Arg],
         body: &ast::Block,
-        self_type: Option<Type>,
-        return_type: Option<Type>,
+        local_vars: &mut HashMap<String, LocalVar>,
+        codes: &mut Vec<ByteCode>,
         is_init: bool,
-    ) -> Result<Function> {
-        let mut local_vars = HashMap::new();
-
-        if let Some(ty) = self_type {
-            let idx = local_vars.len();
-            local_vars.insert(
-                "self",
-                LocalVar {
-                    name: "self",
-                    idx: idx as u32,
-                    ty,
-                },
-            );
-        }
-
-        for arg in args {
-            let idx = local_vars.len() as u32;
-            let ty = self.get_type(&arg.type_.name)?;
-            local_vars.insert(
-                &arg.name,
-                LocalVar {
-                    name: &arg.name,
-                    idx,
-                    ty,
-                },
-            );
-        }
-
-        let mut codes = Vec::new();
-        for i in (0..local_vars.len()).rev() {
-            codes.push(ByteCode::Store { idx: i as u32 });
-        }
-        codes.push(ByteCode::Pop);
-
+    ) -> Result<()> {
         for stmt in &body.statements {
             match stmt {
                 ast::BlockStmt::Let(let_stmt) => {
@@ -351,11 +316,10 @@ impl Generator {
                         });
                     }
                     let idx = local_vars.len();
-                    let ty = self.compile_expr(&local_vars, &let_stmt.expr, &mut codes)?;
+                    let ty = self.compile_expr(local_vars, &let_stmt.expr, codes)?;
                     local_vars.insert(
-                        &let_stmt.var_name,
+                        let_stmt.var_name.to_string(),
                         LocalVar {
-                            name: &let_stmt.var_name,
                             idx: idx as u32,
                             ty,
                         },
@@ -369,16 +333,16 @@ impl Generator {
                                 name: name.to_string(),
                             });
                         };
-                        self.compile_expr(&local_vars, &assign_stmt.expr, &mut codes)?;
+                        self.compile_expr(local_vars, &assign_stmt.expr, codes)?;
                         codes.push(ByteCode::Store { idx: var.idx });
                     }
                     ast::Expr::Index { .. } => todo!(),
                     ast::Expr::Member { target, member } => {
-                        let target_ty = self.compile_expr(&local_vars, target, &mut codes)?;
+                        let target_ty = self.compile_expr(local_vars, target, codes)?;
                         match target_ty {
                             Type::Struct(idx) => match self.get_member(idx as usize, member)? {
                                 Member::Field { offset, .. } => {
-                                    self.compile_expr(&local_vars, &assign_stmt.expr, &mut codes)?;
+                                    self.compile_expr(local_vars, &assign_stmt.expr, codes)?;
                                     codes.push(ByteCode::SetField {
                                         offset: offset as u32,
                                     });
@@ -387,7 +351,7 @@ impl Generator {
                             },
                             _ => return Err(Error::MemberAssign),
                         };
-                        self.compile_expr(&local_vars, &assign_stmt.expr, &mut codes)?;
+                        self.compile_expr(local_vars, &assign_stmt.expr, codes)?;
                     }
                     ast::Expr::Literal(_) => {
                         return Err(Error::CanNotAssignTo {
@@ -412,7 +376,7 @@ impl Generator {
                 },
                 ast::BlockStmt::Return(return_stmt) => {
                     if let Some(expr) = &return_stmt.expr {
-                        self.compile_expr(&local_vars, expr, &mut codes)?;
+                        self.compile_expr(local_vars, expr, codes)?;
                     } else if is_init {
                         codes.push(ByteCode::Load { idx: 0 });
                     } else {
@@ -421,12 +385,91 @@ impl Generator {
                     codes.push(ByteCode::Return);
                 }
                 ast::BlockStmt::Expr(expr) => {
-                    self.compile_expr(&local_vars, expr, &mut codes)?;
+                    self.compile_expr(local_vars, expr, codes)?;
                     codes.push(ByteCode::Pop);
                 }
-                ast::BlockStmt::Block(block) => todo!(),
+                ast::BlockStmt::If(if_stmt) => {
+                    let condition = self.compile_expr(local_vars, &if_stmt.condition, codes)?;
+                    if condition != Type::Bool {
+                        return Err(Error::NonBooleanCondition);
+                    }
+                    let then_start = codes.len();
+                    codes.push(ByteCode::JumpIfFalse { offset: 0 });
+                    self.compile_block(&if_stmt.then_branch, local_vars, codes, is_init)?;
+                    let else_start = codes.len();
+                    codes.push(ByteCode::Jump { offset: 0 });
+                    if let Some(block) = &if_stmt.else_branch {
+                        self.compile_block(block, local_vars, codes, is_init)?;
+                    }
+                    let else_end = codes.len();
+                    codes[then_start] = ByteCode::JumpIfFalse {
+                        offset: else_start as u32 + 1,
+                    };
+                    codes[else_start] = ByteCode::Jump {
+                        offset: else_end as u32,
+                    };
+                }
+                ast::BlockStmt::While(while_stmt) => {
+                    let while_start = codes.len();
+                    let condition = self.compile_expr(local_vars, &while_stmt.condition, codes)?;
+                    if condition != Type::Bool {
+                        return Err(Error::NonBooleanCondition);
+                    }
+                    let start = codes.len();
+                    codes.push(ByteCode::JumpIfFalse { offset: 0 });
+                    self.compile_block(&while_stmt.block, local_vars, codes, is_init)?;
+                    codes.push(ByteCode::Jump {
+                        offset: while_start as u32,
+                    });
+                    let offset = codes.len();
+                    codes[start] = ByteCode::JumpIfFalse {
+                        offset: offset as u32,
+                    };
+                }
+                ast::BlockStmt::Block(block) => {
+                    self.compile_block(block, local_vars, codes, is_init)?;
+                }
             }
         }
+        Ok(())
+    }
+
+    pub fn compile_fn(
+        &mut self,
+        name: &str,
+        args: &[ast::Arg],
+        body: &ast::Block,
+        self_type: Option<Type>,
+        return_type: Option<Type>,
+        is_init: bool,
+    ) -> Result<Function> {
+        let mut local_vars = HashMap::new();
+
+        if let Some(ty) = self_type {
+            let idx = local_vars.len();
+            local_vars.insert(
+                "self".to_string(),
+                LocalVar {
+                    idx: idx as u32,
+                    ty,
+                },
+            );
+        }
+
+        for arg in args {
+            let idx = local_vars.len() as u32;
+            let ty = self.get_type(&arg.type_.name)?;
+            local_vars.insert(arg.name.to_string(), LocalVar { idx, ty });
+        }
+
+        let mut codes = Vec::new();
+        for i in (0..local_vars.len()).rev() {
+            codes.push(ByteCode::Store { idx: i as u32 });
+        }
+        codes.push(ByteCode::Pop);
+
+        self.compile_block(body, &mut local_vars, &mut codes, is_init)?;
+
         if is_init {
             codes.push(ByteCode::Load { idx: 0 });
         } else {
@@ -444,7 +487,7 @@ impl Generator {
 
     pub fn compile_expr(
         &mut self,
-        local_vars: &HashMap<&str, LocalVar>,
+        local_vars: &HashMap<String, LocalVar>,
         expr: &ast::Expr,
         codes: &mut Vec<ByteCode>,
     ) -> Result<Type> {
@@ -476,9 +519,9 @@ impl Generator {
                     return Ok(Type::Struct(idx as u32));
                 }
 
-                return Err(Error::UndefinedIdent {
+                Err(Error::UndefinedIdent {
                     name: name.to_string(),
-                });
+                })
             }
             ast::Expr::Literal(literal) => match literal {
                 token::Literal::Nil => {
@@ -504,8 +547,36 @@ impl Generator {
                 }
             },
             ast::Expr::Unary { op, expr } => {
-                let type_id = self.compile_expr(local_vars, expr, codes)?;
-                Err(Error::UnsupportUnaryOp { op: *op })
+                let ty = self.compile_expr(local_vars, expr, codes)?;
+                match op {
+                    UnaryOp::Plus => match ty {
+                        Type::Int => Ok(Type::Int),
+                        Type::Float => Ok(Type::Float),
+                        _ => Err(Error::UnsupportUnaryOp { op: *op, ty }),
+                    },
+                    UnaryOp::Minus => {
+                        codes.push(ByteCode::Minus);
+                        match ty {
+                            Type::Int => Ok(Type::Int),
+                            Type::Float => Ok(Type::Float),
+                            _ => Err(Error::UnsupportUnaryOp { op: *op, ty }),
+                        }
+                    }
+                    UnaryOp::Not => {
+                        codes.push(ByteCode::Not);
+                        match ty {
+                            Type::Bool => Ok(Type::Bool),
+                            _ => Err(Error::UnsupportUnaryOp { op: *op, ty }),
+                        }
+                    }
+                    UnaryOp::BitNot => {
+                        codes.push(ByteCode::BitNot);
+                        match ty {
+                            Type::Int => Ok(Type::Int),
+                            _ => Err(Error::UnsupportUnaryOp { op: *op, ty }),
+                        }
+                    }
+                }
             }
             ast::Expr::Binary { left, op, right } => {
                 let left = self.compile_expr(local_vars, left, codes)?;
@@ -513,37 +584,100 @@ impl Generator {
 
                 match op {
                     BinaryOp::Add => codes.push(ByteCode::Add),
-                    BinaryOp::Subtract => todo!(),
+                    BinaryOp::Subtract => {
+                        codes.push(ByteCode::Subtract);
+                    }
                     BinaryOp::Multiply => codes.push(ByteCode::Multiply),
-                    BinaryOp::Divide => todo!(),
-                    BinaryOp::Modulo => todo!(),
-                    BinaryOp::BitAnd => todo!(),
-                    BinaryOp::BitOr => todo!(),
-                    BinaryOp::BitXor => todo!(),
+                    BinaryOp::Divide => codes.push(ByteCode::Divide),
+                    BinaryOp::Modulo => codes.push(ByteCode::Modulo),
+                    BinaryOp::BitAnd => {
+                        if (left, right) != (Type::Int, Type::Int) {
+                            return Err(Error::UnsupportBinaryOp {
+                                op: *op,
+                                left,
+                                right,
+                            });
+                        }
+                        codes.push(ByteCode::BitAnd);
+                    }
+                    BinaryOp::BitOr => {
+                        if (left, right) != (Type::Int, Type::Int) {
+                            return Err(Error::UnsupportBinaryOp {
+                                op: *op,
+                                left,
+                                right,
+                            });
+                        }
+                        codes.push(ByteCode::BitOr);
+                    }
+                    BinaryOp::BitXor => {
+                        if (left, right) != (Type::Int, Type::Int) {
+                            return Err(Error::UnsupportBinaryOp {
+                                op: *op,
+                                left,
+                                right,
+                            });
+                        }
+                        codes.push(ByteCode::BitXor);
+                    }
                     BinaryOp::ShiftLeft => todo!(),
                     BinaryOp::ShiftRight => todo!(),
-                    BinaryOp::Equal => todo!(),
-                    BinaryOp::NotEqual => todo!(),
-                    BinaryOp::Less => todo!(),
-                    BinaryOp::LessEqual => todo!(),
-                    BinaryOp::Greater => todo!(),
-                    BinaryOp::GreaterEqual => todo!(),
-                    BinaryOp::And => todo!(),
-                    BinaryOp::Or => todo!(),
+                    BinaryOp::Equal => {
+                        codes.push(ByteCode::Equal);
+                        return Ok(Type::Bool);
+                    }
+                    BinaryOp::NotEqual => {
+                        codes.push(ByteCode::NotEqual);
+                        return Ok(Type::Bool);
+                    }
+                    BinaryOp::Less => {
+                        codes.push(ByteCode::Less);
+                        return Ok(Type::Bool);
+                    }
+                    BinaryOp::LessEqual => {
+                        codes.push(ByteCode::LessEqual);
+                        return Ok(Type::Bool);
+                    }
+                    BinaryOp::Greater => {
+                        codes.push(ByteCode::Greater);
+                        return Ok(Type::Bool);
+                    }
+                    BinaryOp::GreaterEqual => {
+                        codes.push(ByteCode::GreaterEqual);
+                        return Ok(Type::Bool);
+                    }
+                    BinaryOp::And => {
+                        if (left, right) != (Type::Bool, Type::Bool) {
+                            return Err(Error::NonBooleanAnd);
+                        }
+                        codes.push(ByteCode::And);
+                        return Ok(Type::Bool);
+                    }
+                    BinaryOp::Or => {
+                        if (left, right) != (Type::Bool, Type::Bool) {
+                            return Err(Error::NonBooleanOr);
+                        }
+                        codes.push(ByteCode::Or);
+                        return Ok(Type::Bool);
+                    }
                 }
 
                 match (left, right) {
                     (Type::Int, Type::Int) => Ok(Type::Int),
                     (Type::Float, Type::Float) => Ok(Type::Float),
                     (Type::String, Type::String) => Ok(Type::String),
-                    _ => Err(Error::UnsupportBinaryOp { op: *op }),
+                    _ => Err(Error::UnsupportBinaryOp {
+                        op: *op,
+                        left,
+                        right,
+                    }),
                 }
             }
             ast::Expr::Call { func, args } => {
                 let mut is_method = false;
                 let return_type = match &**func {
                     ast::Expr::Member { target, member } => {
-                        let target_ty = self.compile_expr(&local_vars, target, codes)?;
+                        let target_ty = self.compile_expr(local_vars, target, codes)?;
                         match target_ty {
                             Type::Struct(idx) => match self.get_member(idx as usize, member)? {
                                 Member::Field { offset, ty } => {
@@ -597,7 +731,7 @@ impl Generator {
                 todo!()
             }
             ast::Expr::Member { target, member } => {
-                let target_ty = self.compile_expr(&local_vars, target, codes)?;
+                let target_ty = self.compile_expr(local_vars, target, codes)?;
                 match target_ty {
                     Type::Struct(idx) => match self.get_member(idx as usize, member)? {
                         Member::Field { offset, ty } => {
@@ -606,9 +740,9 @@ impl Generator {
                             });
                             Ok(ty)
                         }
-                        Member::Method { idx, return_ty } => unreachable!(),
+                        Member::Method { .. } => unreachable!(),
                     },
-                    _ => return Err(Error::MemberAssign),
+                    _ => Err(Error::MemberAssign),
                 }
             }
         }
@@ -701,9 +835,12 @@ pub enum Error {
     },
     UnsupportBinaryOp {
         op: BinaryOp,
+        left: Type,
+        right: Type,
     },
     UnsupportUnaryOp {
         op: UnaryOp,
+        ty: Type,
     },
     MemberAssign,
     MissStructField {
@@ -711,6 +848,9 @@ pub enum Error {
         field_name: String,
     },
     MissingEntryPoint,
+    NonBooleanCondition,
+    NonBooleanAnd,
+    NonBooleanOr,
 }
 impl Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -721,8 +861,7 @@ impl std::error::Error for Error {}
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-pub struct LocalVar<'a> {
-    pub name: &'a str,
+pub struct LocalVar {
     pub idx: u32,
     pub ty: Type,
 }
@@ -730,6 +869,12 @@ pub struct LocalVar<'a> {
 pub struct Map<T> {
     pub data: Vec<T>,
     pub names: HashMap<String, usize>,
+}
+
+impl<T> Default for Map<T> {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl<T> Map<T> {

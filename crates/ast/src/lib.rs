@@ -56,6 +56,8 @@ pub enum BlockStmt {
     Return(ReturnStmt),
     Expr(Expr),
     Block(Box<Block>),
+    If(IfStmt),
+    While(WhileStmt),
 }
 
 #[derive(Debug)]
@@ -73,6 +75,19 @@ pub struct AssignStmt {
 #[derive(Debug)]
 pub struct ReturnStmt {
     pub expr: Option<Expr>,
+}
+
+#[derive(Debug)]
+pub struct IfStmt {
+    pub condition: Box<Expr>,
+    pub then_branch: Box<Block>,
+    pub else_branch: Option<Box<Block>>,
+}
+
+#[derive(Debug)]
+pub struct WhileStmt {
+    pub condition: Box<Expr>,
+    pub block: Box<Block>,
 }
 
 #[derive(Debug)]
@@ -106,33 +121,55 @@ pub enum Expr {
 
 #[derive(Debug, Clone, Copy)]
 pub enum UnaryOp {
-    Plus,   // +x
-    Minus,  // -x
-    Not,    // !x
-    BitNot, // ^x
+    /// +x
+    Plus,
+    /// -x
+    Minus,
+    /// !x
+    Not,
+    /// ^x  
+    BitNot,
 }
 
 #[derive(Debug, Clone, Copy)]
 pub enum BinaryOp {
-    Add,      // +
-    Subtract, // -
-    Multiply, // *
-    Divide,   // /
-    Modulo,   // %
+    /// +
+    Add,
+    /// -
+    Subtract,
+    /// *
+    Multiply,
+    /// /
+    Divide,
+    /// %
+    Modulo,
 
-    BitAnd,     // &
-    BitOr,      // |
-    BitXor,     // ^
-    ShiftLeft,  // <<
-    ShiftRight, // >>
+    /// &
+    BitAnd,
+    /// |
+    BitOr,
+    /// ^
+    BitXor,
+    /// <<
+    ShiftLeft,
+    /// >>
+    ShiftRight,
 
-    Equal,        // ==
-    NotEqual,     // !=
-    Less,         // <
-    LessEqual,    // <=
-    Greater,      // >
-    GreaterEqual, // >=
+    /// ==
+    Equal,
+    /// !=
+    NotEqual,
+    /// <
+    Less,
+    /// <=
+    LessEqual,
+    /// >
+    Greater,
+    /// >=
+    GreaterEqual,
 
-    And, // &&
-    Or,  // ||
+    /// &&
+    And,
+    /// ||
+    Or,
 }

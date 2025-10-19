@@ -16,8 +16,32 @@ fn run(a: int, b: int) -> int {
     return a + b;
 }
 
+fn fibonacci(n: int) {
+    if n <= 0 {
+        return 0;
+    } 
+
+    if n == 1 {
+        return 1;
+    }
+        
+    let a = 0;
+    let b = 1;
+    let count = 2;
+
+    while count <= n {
+        let tmp = a + b;
+        a = b;
+        b = tmp;
+        count =  count + 1;
+    }
+    return b;
+}
+
 fn main() {
-    let h = Human("Rust", 10);
+    let h = Human("Bob", 18 + 1 * 2);
     print(h.name);
-    print(run(h.get_age(), h.age));
+    print(h.get_age());
+    print(fibonacci(20));
+    return;
 }

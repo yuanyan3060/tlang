@@ -1,0 +1,20 @@
+[profile.debug]
+linker = "clang"
+rustflags = ["-C", "link-arg=-fuse-ld=/usr/bin/mold", "-Zcodegen-backend=cranelift"]
+
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1
+opt-level = 3
+
+
+[target.x86_64-unknown-linux-gnu]
+linker = "/usr/bin/clang"
+
+[build]
+# rustflags = ["-Clink-arg=-fuse-ld=mold", "-Zthreads=32"]
+rustflags = ["-C", "link-arg=--ld-path=/usr/bin/mold"]
+
+[profile.dev.build-override]
+opt-level = 3

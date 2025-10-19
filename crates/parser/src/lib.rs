@@ -1,4 +1,4 @@
-use ast::{FunctionDef, LetStmt, ReturnStmt};
+use ast::{FunctionDef, IfStmt, LetStmt, ReturnStmt, WhileStmt};
 use lex::Pos;
 
 use std::slice::Iter;
@@ -356,7 +356,7 @@ impl<'a> Parser<'a> {
                     self.skip_newline();
                     self.expect(TokenKind::Assign)?;
                     self.skip_newline();
-                    let expr = self.parse_add_expr()?;
+                    let expr = self.parse_add_sub_expr()?;
                     ast::BlockStmt::Let(LetStmt {
                         var_name: name,
                         expr,
@@ -369,7 +369,7 @@ impl<'a> Parser<'a> {
                         self.bump();
                         None
                     } else {
-                        let expr = self.parse_add_expr()?;
+                        let expr = self.parse_add_sub_expr()?;
                         Some(expr)
                     };
 
@@ -386,6 +386,44 @@ impl<'a> Parser<'a> {
                 (Token::Semicolon, _) => {
                     self.bump();
                     continue;
+                }
+                (Token::If, _) => {
+                    self.bump();
+
+                    self.skip_newline();
+                    let condition = self.parse_expr()?;
+
+                    self.skip_newline();
+                    let then_branch = self.parse_block()?;
+
+                    self.skip_newline();
+                    let else_branch = if self.first_check(TokenKind::Else) {
+                        self.bump();
+                        self.skip_newline();
+                        Some(self.parse_block()?)
+                    } else {
+                        None
+                    };
+
+                    ast::BlockStmt::If(IfStmt {
+                        condition: Box::new(condition),
+                        then_branch: Box::new(then_branch),
+                        else_branch: else_branch.map(Box::new),
+                    })
+                }
+                (Token::While, _) => {
+                    self.bump();
+
+                    self.skip_newline();
+                    let condition = self.parse_expr()?;
+
+                    self.skip_newline();
+                    let block = self.parse_block()?;
+
+                    ast::BlockStmt::While(WhileStmt {
+                        condition: Box::new(condition),
+                        block: Box::new(block),
+                    })
                 }
                 _ => {
                     let expr = self.parse_expr()?;
@@ -411,17 +449,21 @@ impl<'a> Parser<'a> {
         Ok(ast::Block { statements: stmts })
     }
 
-    pub fn parse_mul_expr(&mut self) -> ParseResult<ast::Expr> {
+    pub fn parse_expr(&mut self) -> ParseResult<ast::Expr> {
+        self.parse_or_expr()
+    }
+
+    pub fn parse_or_expr(&mut self) -> ParseResult<ast::Expr> {
         self.skip_newline();
-        let mut curr = self.parse_factor()?;
+        let mut curr = self.parse_and_expr()?;
         loop {
             self.skip_newline();
-            if !self.check_mul_op() {
+            if !matches!(self.first(), Token::Or) {
                 break;
             }
             let op = self.parse_binary_op()?;
             self.skip_newline();
-            let right = self.parse_factor()?;
+            let right = self.parse_and_expr()?;
             curr = ast::Expr::Binary {
                 left: Box::new(curr),
                 op,
@@ -431,21 +473,145 @@ impl<'a> Parser<'a> {
         Ok(curr)
     }
 
-    pub fn parse_expr(&mut self) -> ParseResult<ast::Expr> {
-        self.parse_add_expr()
-    }
-
-    pub fn parse_add_expr(&mut self) -> ParseResult<ast::Expr> {
+    pub fn parse_and_expr(&mut self) -> ParseResult<ast::Expr> {
         self.skip_newline();
-        let mut curr = self.parse_mul_expr()?;
+        let mut curr = self.parse_relation_expr()?;
         loop {
             self.skip_newline();
-            if !self.check_add_op() {
+            if !matches!(self.first(), Token::And) {
                 break;
             }
             let op = self.parse_binary_op()?;
             self.skip_newline();
-            let right = self.parse_mul_expr()?;
+            let right = self.parse_relation_expr()?;
+            curr = ast::Expr::Binary {
+                left: Box::new(curr),
+                op,
+                right: Box::new(right),
+            };
+        }
+        Ok(curr)
+    }
+
+    pub fn parse_relation_expr(&mut self) -> ParseResult<ast::Expr> {
+        self.skip_newline();
+        let mut curr = self.parse_bit_or_expr()?;
+        loop {
+            self.skip_newline();
+            if !matches!(
+                self.first(),
+                Token::Equal
+                    | Token::NotEqual
+                    | Token::Greater
+                    | Token::GreaterEqual
+                    | Token::Less
+                    | Token::LessEqual
+            ) {
+                break;
+            }
+            let op = self.parse_binary_op()?;
+            self.skip_newline();
+            let right = self.parse_bit_or_expr()?;
+            curr = ast::Expr::Binary {
+                left: Box::new(curr),
+                op,
+                right: Box::new(right),
+            };
+        }
+        Ok(curr)
+    }
+
+    pub fn parse_bit_or_expr(&mut self) -> ParseResult<ast::Expr> {
+        self.skip_newline();
+        let mut curr = self.parse_bit_xor_expr()?;
+        loop {
+            self.skip_newline();
+            if !matches!(self.first(), Token::BitOr) {
+                break;
+            }
+            let op = self.parse_binary_op()?;
+            self.skip_newline();
+            let right = self.parse_bit_xor_expr()?;
+            curr = ast::Expr::Binary {
+                left: Box::new(curr),
+                op,
+                right: Box::new(right),
+            };
+        }
+        Ok(curr)
+    }
+
+    pub fn parse_bit_xor_expr(&mut self) -> ParseResult<ast::Expr> {
+        self.skip_newline();
+        let mut curr = self.parse_bit_and_expr()?;
+        loop {
+            self.skip_newline();
+            if !matches!(self.first(), Token::BitXor) {
+                break;
+            }
+            let op = self.parse_binary_op()?;
+            self.skip_newline();
+            let right = self.parse_bit_and_expr()?;
+            curr = ast::Expr::Binary {
+                left: Box::new(curr),
+                op,
+                right: Box::new(right),
+            };
+        }
+        Ok(curr)
+    }
+
+    pub fn parse_bit_and_expr(&mut self) -> ParseResult<ast::Expr> {
+        self.skip_newline();
+        let mut curr = self.parse_add_sub_expr()?;
+        loop {
+            self.skip_newline();
+            if !matches!(self.first(), Token::BitAnd) {
+                break;
+            }
+            let op = self.parse_binary_op()?;
+            self.skip_newline();
+            let right = self.parse_add_sub_expr()?;
+            curr = ast::Expr::Binary {
+                left: Box::new(curr),
+                op,
+                right: Box::new(right),
+            };
+        }
+        Ok(curr)
+    }
+
+    pub fn parse_add_sub_expr(&mut self) -> ParseResult<ast::Expr> {
+        self.skip_newline();
+        let mut curr = self.parse_mul_div_mod_expr()?;
+        loop {
+            self.skip_newline();
+            if !matches!(self.first(), Token::Plus | Token::Minus) {
+                break;
+            }
+            let op = self.parse_binary_op()?;
+            self.skip_newline();
+            let right = self.parse_mul_div_mod_expr()?;
+            curr = ast::Expr::Binary {
+                left: Box::new(curr),
+                op,
+                right: Box::new(right),
+            };
+        }
+        Ok(curr)
+    }
+
+    pub fn parse_mul_div_mod_expr(&mut self) -> ParseResult<ast::Expr> {
+        self.skip_newline();
+        let mut curr = self.parse_factor()?;
+        loop {
+            self.skip_newline();
+            if !matches!(self.first(), Token::Star | Token::Slash | Token::Percent) {
+                break;
+            }
+            let op = self.parse_binary_op()?;
+            self.skip_newline();
+            let right = self.parse_factor()?;
             curr = ast::Expr::Binary {
                 left: Box::new(curr),
                 op,
@@ -495,7 +661,7 @@ impl<'a> Parser<'a> {
         let mut expr = match self.first_full() {
             (Token::OpenParen, _) => {
                 self.bump();
-                let expr = self.parse_add_expr()?;
+                let expr = self.parse_or_expr()?;
                 self.skip_newline();
                 self.expect(TokenKind::CloseParen)?;
                 expr
@@ -514,7 +680,13 @@ impl<'a> Parser<'a> {
                 self.bump();
                 ast::Expr::Ident("self".to_string())
             }
-            _ => self.parse_expr()?,
+            (token, pos) => {
+                return Err(ParseError::Unexpected {
+                    expected: vec![],
+                    found: token.clone(),
+                    pos,
+                });
+            }
         };
 
         loop {
@@ -588,30 +760,6 @@ impl<'a> Parser<'a> {
         Ok(args)
     }
 
-    pub fn check_binary_op(&self) -> bool {
-        matches!(
-            self.first(),
-            Token::Equal
-                | Token::NotEqual
-                | Token::Less
-                | Token::LessEqual
-                | Token::Greater
-                | Token::GreaterEqual
-                | Token::BitAnd
-                | Token::BitOr
-                | Token::BitXor
-                | Token::ShiftLeft
-                | Token::ShiftRight
-                | Token::Plus
-                | Token::Minus
-                | Token::Star
-                | Token::Slash
-                | Token::Percent
-                | Token::And
-                | Token::Or
-        )
-    }
-
     pub fn parse_binary_op(&mut self) -> ParseResult<ast::BinaryOp> {
         match self.bump() {
             (Token::Equal, _) => Ok(ast::BinaryOp::Equal),
@@ -640,14 +788,6 @@ impl<'a> Parser<'a> {
                 pos,
             }),
         }
-    }
-
-    pub fn check_add_op(&self) -> bool {
-        matches!(self.first(), Token::Plus | Token::Minus)
-    }
-
-    pub fn check_mul_op(&self) -> bool {
-        matches!(self.first(), Token::Star | Token::Slash)
     }
 }
 

@@ -26,6 +26,14 @@ impl Value {
         }
     }
 
+    pub fn as_bool(&self) -> Option<bool> {
+        if let Self::Bool(b) = self {
+            Some(*b)
+        } else {
+            None
+        }
+    }
+
     pub fn as_fn(&self) -> Option<u32> {
         if let Self::Fn(f) = self {
             Some(*f)
@@ -147,7 +155,7 @@ impl Value {
 }
 
 pub struct State {
-    pub locals: Vec<Vec<Value>>,
+    pub locals: Vec<Value>,
     pub stack: Vec<Value>,
 }
 
@@ -160,8 +168,8 @@ impl Default for State {
 impl State {
     pub fn new() -> Self {
         Self {
-            stack: Vec::new(),
-            locals: Vec::new(),
+            stack: Vec::with_capacity(4096),
+            locals: Vec::with_capacity(4096),
         }
     }
 }

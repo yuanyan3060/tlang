@@ -228,6 +228,9 @@ impl<'a> Lex<'a> {
                     "nil" => Token::Literal(Literal::Nil),
                     "true" => Token::Literal(Literal::Bool(true)),
                     "false" => Token::Literal(Literal::Bool(false)),
+                    "if" => Token::If,
+                    "while" => Token::While,
+                    "else" => Token::Else,
                     _ => Token::Ident(ident),
                 }
             }
