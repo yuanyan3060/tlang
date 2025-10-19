@@ -778,7 +778,7 @@ impl<'a> Parser<'a> {
             (Token::Minus, _) => Ok(ast::BinaryOp::Subtract),
             (Token::Star, _) => Ok(ast::BinaryOp::Multiply),
             (Token::Slash, _) => Ok(ast::BinaryOp::Divide),
-            (Token::Percent, _) => Ok(ast::BinaryOp::Multiply),
+            (Token::Percent, _) => Ok(ast::BinaryOp::Modulo),
 
             (Token::And, _) => Ok(ast::BinaryOp::And),
             (Token::Or, _) => Ok(ast::BinaryOp::Or),
