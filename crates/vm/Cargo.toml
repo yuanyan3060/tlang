@@ -1,0 +1,18 @@
+[package]
+name = "vm"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+path = "src/main.rs"
+name = "vm"
+
+[dependencies]
+value = { path = "../value" }
+lex = { path = "../lex" }
+token = { path = "../token" }
+parser = { path = "../parser" }
+bytecode = { path = "../bytecode" }

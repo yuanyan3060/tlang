@@ -1,0 +1,6 @@
+atom: "(" expr ")" | literal | ident
+primary : atom { "." ident | "(" expr_list ")" }
+factor: { "-" } primary
+mul_expr: factor { MulOp factor}
+expr: mul_expr { AddOp mul_expr }
+literal: BOOL | NUMBER | FLOAT | STRING

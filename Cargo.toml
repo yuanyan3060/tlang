@@ -1,0 +1,3 @@
+[workspace]
+resolver = "3"
+members = ["crates/ast", "crates/bytecode", "crates/compiler", "crates/lex", "crates/parser", "crates/token", "crates/value", "crates/vm"]

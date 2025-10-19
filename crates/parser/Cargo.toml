@@ -1,0 +1,19 @@
+[package]
+name = "parser"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+path = "src/main.rs"
+name = "parser"
+
+[dependencies]
+value = { path = "../value" }
+token = { path = "../token" }
+bytecode = { path = "../bytecode" }
+lex = { path = "../lex"}
+ast = { path = "../ast"}
+indexmap = "2.11.4"

@@ -1,0 +1,708 @@
+use ast::{FunctionDef, LetStmt, ReturnStmt};
+use lex::Pos;
+
+use std::slice::Iter;
+use token::{Token, TokenKind};
+
+use crate::error::{ParseError, ParseResult};
+
+pub mod error;
+
+pub struct Parser<'a> {
+    input: Iter<'a, (Token, Pos)>,
+    eof_pos: Pos,
+}
+
+impl<'a> Parser<'a> {
+    pub fn new(input: Iter<'a, (Token, Pos)>) -> Self {
+        let eof_pos = match input.as_slice().last() {
+            Some((Token::Eof, pos)) => *pos,
+            Some((token, _)) => {
+                println!("{:?}", token);
+                panic!("last token must be eof")
+            }
+            None => Pos::default(),
+        };
+
+        Self { input, eof_pos }
+    }
+
+    pub fn bump(&mut self) -> (&Token, Pos) {
+        if let Some((token, pos)) = self.input.next() {
+            (token, *pos)
+        } else {
+            (&Token::Eof, self.eof_pos)
+        }
+    }
+
+    pub fn first(&self) -> &Token {
+        self.input
+            .clone()
+            .next()
+            .map(|x| &x.0)
+            .unwrap_or(&Token::Eof)
+    }
+
+    pub fn first_full(&self) -> (&Token, Pos) {
+        if let Some((token, pos)) = self.input.clone().next() {
+            (token, *pos)
+        } else {
+            (&Token::Eof, self.eof_pos)
+        }
+    }
+
+    pub fn unexpected_eof(&self, kinds: Vec<TokenKind>) -> ParseError {
+        ParseError::Unexpected {
+            expected: kinds,
+            found: Token::Eof,
+            pos: self.eof_pos,
+        }
+    }
+
+    pub fn expect(&mut self, kind: TokenKind) -> Result<(), ParseError> {
+        let (token, pos) = self.first_full();
+        if token.kind() == kind {
+            self.bump();
+            Ok(())
+        } else {
+            Err(ParseError::Unexpected {
+                expected: vec![kind],
+                found: token.clone(),
+                pos,
+            })
+        }
+    }
+
+    pub fn first_check(&self, kind: TokenKind) -> bool {
+        self.input
+            .clone()
+            .next()
+            .map(|(token, _)| token.kind() == kind)
+            .unwrap_or(false)
+    }
+
+    pub fn skip_newline(&mut self) {
+        loop {
+            let first = self.first();
+            match first {
+                Token::Whitespace | Token::NewLine => {
+                    self.bump();
+                }
+                _ => break,
+            }
+        }
+    }
+
+    pub fn expect_ident(&mut self) -> Result<String, ParseError> {
+        let (token, pos) = self.bump();
+        match token {
+            Token::Ident(name) => Ok(name.to_string()),
+            _ => Err(ParseError::Unexpected {
+                expected: vec![TokenKind::Ident],
+                found: token.clone(),
+                pos,
+            }),
+        }
+    }
+
+    pub fn parse_program(&mut self) -> ParseResult<ast::Program> {
+        let mut program = ast::Program {
+            statements: Vec::new(),
+        };
+
+        loop {
+            self.skip_newline();
+            match self.first_full() {
+                (Token::Struct, _) => {
+                    let node = self.parse_struct()?;
+                    program.statements.push(ast::Statement::StructDef(node));
+                }
+                (Token::Fn, _) => {
+                    let function = self.parse_fn()?;
+                    program
+                        .statements
+                        .push(ast::Statement::FunctionDef(function));
+                }
+                (Token::Eof, _) => {
+                    break;
+                }
+                (token, pos) => {
+                    return Err(ParseError::Unexpected {
+                        expected: vec![TokenKind::Struct, TokenKind::Fn],
+                        found: token.clone(),
+                        pos,
+                    });
+                }
+            }
+        }
+
+        Ok(program)
+    }
+
+    pub fn parse_struct(&mut self) -> ParseResult<ast::StructDef> {
+        let mut fields = Vec::new();
+        let mut methods = Vec::new();
+        let mut functions = Vec::new();
+
+        self.skip_newline();
+        self.expect(TokenKind::Struct)?;
+        self.skip_newline();
+
+        let name = self.expect_ident()?;
+
+        self.skip_newline();
+        self.expect(TokenKind::OpenBrace)?;
+
+        loop {
+            self.skip_newline();
+            match self.first_full() {
+                (Token::Fn, _) => match self.parse_fn_and_method(true)? {
+                    RawFunction::Function(function) => {
+                        functions.push(function);
+                    }
+                    RawFunction::Method(method) => {
+                        methods.push(method);
+                    }
+                },
+                (Token::Ident(..), _) => {
+                    let field = self.parse_field()?;
+                    fields.push(field);
+                }
+                (Token::CloseBrace, _) => {
+                    self.bump();
+                    break;
+                }
+                (token, pos) => {
+                    return Err(ParseError::Unexpected {
+                        expected: vec![TokenKind::Fn, TokenKind::Ident, TokenKind::CloseBrace],
+                        found: token.clone(),
+                        pos,
+                    });
+                }
+            }
+        }
+        Ok(ast::StructDef {
+            name,
+            fields,
+            functions,
+            methods,
+        })
+    }
+
+    pub fn parse_fn(&mut self) -> ParseResult<ast::FunctionDef> {
+        match self.parse_fn_and_method(false)? {
+            RawFunction::Function(function) => Ok(function),
+            RawFunction::Method(_) => {
+                unreachable!()
+            }
+        }
+    }
+
+    pub fn parse_fn_and_method(&mut self, method_ok: bool) -> ParseResult<RawFunction> {
+        self.skip_newline();
+        self.expect(TokenKind::Fn)?;
+
+        self.skip_newline();
+        let name = self.expect_ident()?;
+        let mut args = Vec::new();
+        let mut return_type = None;
+        let body;
+
+        self.skip_newline();
+        self.expect(TokenKind::OpenParen)?;
+
+        let mut is_method = false;
+        let mut state = ParseArgState::Start;
+        loop {
+            self.skip_newline();
+            match self.first_full() {
+                (Token::SelfArg, pos) => {
+                    if !state.can_be_arg() {
+                        return Err(ParseError::Unexpected {
+                            expected: state.expect(),
+                            found: Token::SelfArg,
+                            pos,
+                        });
+                    }
+
+                    if !state.can_be_self() {
+                        return Err(ParseError::SelfArgNotFirst { pos });
+                    }
+
+                    if !method_ok {
+                        return Err(ParseError::SelfArgInFunction { pos });
+                    }
+
+                    self.bump();
+                    is_method = true;
+                    state.next_state();
+                }
+                (Token::Ident(name), pos) => {
+                    let name = name.to_string();
+
+                    if !state.can_be_arg() {
+                        return Err(ParseError::Unexpected {
+                            expected: state.expect(),
+                            found: Token::Ident(name),
+                            pos,
+                        });
+                    }
+                    self.bump();
+                    self.skip_newline();
+                    self.expect(TokenKind::Colon)?;
+
+                    self.skip_newline();
+                    let type_ = self.expect_ident()?;
+                    args.push(ast::Arg {
+                        name: name.to_string(),
+                        type_: ast::Type { name: type_ },
+                    });
+                    state.next_state();
+                }
+                (Token::CloseParen, pos) => {
+                    if !state.can_be_close() {
+                        return Err(ParseError::Unexpected {
+                            expected: state.expect(),
+                            found: Token::CloseParen,
+                            pos,
+                        });
+                    }
+                    self.bump();
+                    break;
+                }
+                (Token::Comma, pos) => {
+                    if !state.can_be_comma() {
+                        return Err(ParseError::Unexpected {
+                            expected: state.expect(),
+                            found: Token::Comma,
+                            pos,
+                        });
+                    }
+                    self.bump();
+                    state.next_state();
+                }
+                (token, pos) => {
+                    return Err(ParseError::Unexpected {
+                        expected: state.expect(),
+                        found: token.clone(),
+                        pos,
+                    });
+                }
+            }
+        }
+        self.skip_newline();
+        match self.first_full() {
+            (Token::Arrow, _) => {
+                self.bump();
+                self.skip_newline();
+                let ty = self.expect_ident()?;
+                return_type = Some(ast::Type { name: ty });
+                self.skip_newline();
+                body = self.parse_block()?;
+            }
+            (Token::OpenBrace, _) => {
+                body = self.parse_block()?;
+            }
+            (token, pos) => {
+                return Err(ParseError::Unexpected {
+                    expected: vec![TokenKind::Arrow, TokenKind::OpenBrace],
+                    found: token.clone(),
+                    pos,
+                });
+            }
+        }
+
+        if is_method {
+            Ok(RawFunction::Method(FunctionDef {
+                name,
+                args,
+                return_type,
+                body,
+            }))
+        } else {
+            Ok(RawFunction::Function(FunctionDef {
+                name,
+                args,
+                return_type,
+                body,
+            }))
+        }
+    }
+
+    pub fn parse_field(&mut self) -> ParseResult<ast::Field> {
+        let name = self.expect_ident()?;
+        self.expect(TokenKind::Colon)?;
+        let ty = self.expect_ident()?;
+        self.expect(TokenKind::NewLine)?;
+
+        Ok(ast::Field {
+            name,
+            type_: ast::Type { name: ty },
+        })
+    }
+
+    pub fn parse_block(&mut self) -> ParseResult<ast::Block> {
+        self.skip_newline();
+        self.expect(TokenKind::OpenBrace)?;
+        let mut stmts = Vec::new();
+
+        loop {
+            self.skip_newline();
+            let stmt = match self.first_full() {
+                (Token::Let, _) => {
+                    self.bump();
+                    self.skip_newline();
+                    let name = self.expect_ident()?;
+                    self.skip_newline();
+                    self.expect(TokenKind::Assign)?;
+                    self.skip_newline();
+                    let expr = self.parse_add_expr()?;
+                    ast::BlockStmt::Let(LetStmt {
+                        var_name: name,
+                        expr,
+                    })
+                }
+                (Token::Return, _) => {
+                    self.bump();
+                    self.skip_newline();
+                    let expr = if self.first_check(TokenKind::Semicolon) {
+                        self.bump();
+                        None
+                    } else {
+                        let expr = self.parse_add_expr()?;
+                        Some(expr)
+                    };
+
+                    ast::BlockStmt::Return(ReturnStmt { expr })
+                }
+                (Token::CloseBrace, _) => {
+                    self.bump();
+                    break;
+                }
+                (Token::OpenBrace, _) => {
+                    let block = self.parse_block()?;
+                    ast::BlockStmt::Block(Box::new(block))
+                }
+                (Token::Semicolon, _) => {
+                    self.bump();
+                    continue;
+                }
+                _ => {
+                    let expr = self.parse_expr()?;
+                    self.skip_newline();
+                    let stmt = if self.first_check(TokenKind::Assign) {
+                        self.bump();
+                        self.skip_newline();
+                        let assign = ast::AssignStmt {
+                            expr: self.parse_expr()?,
+                            target: expr,
+                        };
+                        ast::BlockStmt::Assign(assign)
+                    } else {
+                        ast::BlockStmt::Expr(expr)
+                    };
+                    self.expect(TokenKind::Semicolon)?;
+                    stmt
+                }
+            };
+            stmts.push(stmt);
+        }
+
+        Ok(ast::Block { statements: stmts })
+    }
+
+    pub fn parse_mul_expr(&mut self) -> ParseResult<ast::Expr> {
+        self.skip_newline();
+        let mut curr = self.parse_factor()?;
+        loop {
+            self.skip_newline();
+            if !self.check_mul_op() {
+                break;
+            }
+            let op = self.parse_binary_op()?;
+            self.skip_newline();
+            let right = self.parse_factor()?;
+            curr = ast::Expr::Binary {
+                left: Box::new(curr),
+                op,
+                right: Box::new(right),
+            };
+        }
+        Ok(curr)
+    }
+
+    pub fn parse_expr(&mut self) -> ParseResult<ast::Expr> {
+        self.parse_add_expr()
+    }
+
+    pub fn parse_add_expr(&mut self) -> ParseResult<ast::Expr> {
+        self.skip_newline();
+        let mut curr = self.parse_mul_expr()?;
+        loop {
+            self.skip_newline();
+            if !self.check_add_op() {
+                break;
+            }
+            let op = self.parse_binary_op()?;
+            self.skip_newline();
+            let right = self.parse_mul_expr()?;
+            curr = ast::Expr::Binary {
+                left: Box::new(curr),
+                op,
+                right: Box::new(right),
+            };
+        }
+        Ok(curr)
+    }
+
+    pub fn parse_factor(&mut self) -> ParseResult<ast::Expr> {
+        self.skip_newline();
+        match self.first() {
+            Token::Not => {
+                self.bump();
+                Ok(ast::Expr::Unary {
+                    op: ast::UnaryOp::Not,
+                    expr: Box::new(self.parse_primary()?),
+                })
+            }
+            Token::BitNot => {
+                self.bump();
+                Ok(ast::Expr::Unary {
+                    op: ast::UnaryOp::BitNot,
+                    expr: Box::new(self.parse_primary()?),
+                })
+            }
+            Token::Plus => {
+                self.bump();
+                Ok(ast::Expr::Unary {
+                    op: ast::UnaryOp::Plus,
+                    expr: Box::new(self.parse_primary()?),
+                })
+            }
+            Token::Minus => {
+                self.bump();
+                Ok(ast::Expr::Unary {
+                    op: ast::UnaryOp::Minus,
+                    expr: Box::new(self.parse_primary()?),
+                })
+            }
+            _ => self.parse_primary(),
+        }
+    }
+
+    pub fn parse_primary(&mut self) -> ParseResult<ast::Expr> {
+        self.skip_newline();
+        let mut expr = match self.first_full() {
+            (Token::OpenParen, _) => {
+                self.bump();
+                let expr = self.parse_add_expr()?;
+                self.skip_newline();
+                self.expect(TokenKind::CloseParen)?;
+                expr
+            }
+            (Token::Ident(name), _) => {
+                let name = name.to_string();
+                self.bump();
+                ast::Expr::Ident(name)
+            }
+            (Token::Literal(literal), _) => {
+                let literal = literal.clone();
+                self.bump();
+                ast::Expr::Literal(literal)
+            }
+            (Token::SelfArg, _) => {
+                self.bump();
+                ast::Expr::Ident("self".to_string())
+            }
+            _ => self.parse_expr()?,
+        };
+
+        loop {
+            self.skip_newline();
+            match self.first_full() {
+                (Token::Dot, _) => {
+                    self.bump();
+                    self.skip_newline();
+                    let member = self.expect_ident()?;
+                    expr = ast::Expr::Member {
+                        target: Box::new(expr),
+                        member,
+                    };
+                }
+                (Token::OpenParen, _) => {
+                    let args = self.parse_fn_call_args()?;
+                    expr = ast::Expr::Call {
+                        func: Box::new(expr),
+                        args,
+                    }
+                }
+                _ => break,
+            }
+        }
+        Ok(expr)
+    }
+
+    pub fn parse_fn_call_args(&mut self) -> ParseResult<Vec<ast::Expr>> {
+        self.skip_newline();
+        self.expect(TokenKind::OpenParen)?;
+
+        let mut comma_ok = false;
+        let mut paren_ok = true;
+
+        let mut args = Vec::new();
+        loop {
+            self.skip_newline();
+            match self.first_full() {
+                (Token::Comma, pos) => {
+                    if !comma_ok {
+                        // TODO
+                        return Err(ParseError::Unexpected {
+                            expected: vec![],
+                            found: Token::Comma,
+                            pos,
+                        });
+                    }
+                    self.bump();
+                    comma_ok = false;
+                    paren_ok = false
+                }
+                (Token::CloseParen, pos) => {
+                    if !paren_ok {
+                        // TODO
+                        return Err(ParseError::Unexpected {
+                            expected: vec![],
+                            found: Token::CloseParen,
+                            pos,
+                        });
+                    }
+                    self.bump();
+                    break;
+                }
+                _ => {
+                    args.push(self.parse_expr()?);
+                    comma_ok = true;
+                    paren_ok = true;
+                }
+            }
+        }
+        Ok(args)
+    }
+
+    pub fn check_binary_op(&self) -> bool {
+        matches!(
+            self.first(),
+            Token::Equal
+                | Token::NotEqual
+                | Token::Less
+                | Token::LessEqual
+                | Token::Greater
+                | Token::GreaterEqual
+                | Token::BitAnd
+                | Token::BitOr
+                | Token::BitXor
+                | Token::ShiftLeft
+                | Token::ShiftRight
+                | Token::Plus
+                | Token::Minus
+                | Token::Star
+                | Token::Slash
+                | Token::Percent
+                | Token::And
+                | Token::Or
+        )
+    }
+
+    pub fn parse_binary_op(&mut self) -> ParseResult<ast::BinaryOp> {
+        match self.bump() {
+            (Token::Equal, _) => Ok(ast::BinaryOp::Equal),
+            (Token::NotEqual, _) => Ok(ast::BinaryOp::NotEqual),
+            (Token::Less, _) => Ok(ast::BinaryOp::Less),
+            (Token::LessEqual, _) => Ok(ast::BinaryOp::LessEqual),
+            (Token::Greater, _) => Ok(ast::BinaryOp::Greater),
+            (Token::GreaterEqual, _) => Ok(ast::BinaryOp::GreaterEqual),
+
+            (Token::BitAnd, _) => Ok(ast::BinaryOp::BitAnd),
+            (Token::BitOr, _) => Ok(ast::BinaryOp::BitOr),
+            (Token::BitXor, _) => Ok(ast::BinaryOp::BitXor),
+            (Token::ShiftLeft, _) => Ok(ast::BinaryOp::ShiftLeft),
+            (Token::ShiftRight, _) => Ok(ast::BinaryOp::ShiftRight),
+            (Token::Plus, _) => Ok(ast::BinaryOp::Add),
+            (Token::Minus, _) => Ok(ast::BinaryOp::Subtract),
+            (Token::Star, _) => Ok(ast::BinaryOp::Multiply),
+            (Token::Slash, _) => Ok(ast::BinaryOp::Divide),
+            (Token::Percent, _) => Ok(ast::BinaryOp::Multiply),
+
+            (Token::And, _) => Ok(ast::BinaryOp::And),
+            (Token::Or, _) => Ok(ast::BinaryOp::Or),
+            (token, pos) => Err(ParseError::Unexpected {
+                expected: vec![], // TODO!
+                found: token.clone(),
+                pos,
+            }),
+        }
+    }
+
+    pub fn check_add_op(&self) -> bool {
+        matches!(self.first(), Token::Plus | Token::Minus)
+    }
+
+    pub fn check_mul_op(&self) -> bool {
+        matches!(self.first(), Token::Star | Token::Slash)
+    }
+}
+
+pub enum RawFunction {
+    Function(ast::FunctionDef),
+    Method(ast::FunctionDef),
+}
+
+pub enum ParseArgState {
+    Start,
+    Comma,
+    Arg,
+}
+
+impl ParseArgState {
+    pub fn can_be_self(&self) -> bool {
+        matches!(self, Self::Start)
+    }
+
+    pub fn can_be_close(&self) -> bool {
+        match self {
+            Self::Start | Self::Arg => true,
+            Self::Comma => false,
+        }
+    }
+
+    pub fn can_be_arg(&self) -> bool {
+        match self {
+            Self::Start | Self::Comma => true,
+            Self::Arg => false,
+        }
+    }
+
+    pub fn can_be_comma(&self) -> bool {
+        match self {
+            Self::Start | Self::Arg => true,
+            Self::Comma => false,
+        }
+    }
+
+    pub fn expect(&self) -> Vec<TokenKind> {
+        match self {
+            ParseArgState::Start => {
+                vec![TokenKind::SelfArg, TokenKind::CloseParen, TokenKind::Ident]
+            }
+            ParseArgState::Comma => vec![TokenKind::Ident],
+            ParseArgState::Arg => vec![TokenKind::Comma, TokenKind::CloseParen],
+        }
+    }
+
+    pub fn next_state(&mut self) {
+        match self {
+            ParseArgState::Start => *self = Self::Arg,
+            ParseArgState::Comma => *self = Self::Arg,
+            ParseArgState::Arg => *self = Self::Comma,
+        }
+    }
+}
