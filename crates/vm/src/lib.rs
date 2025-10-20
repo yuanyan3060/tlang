@@ -54,13 +54,18 @@ impl Vm {
                 }
             }
         }
-        self.execute_codes(program, main_fn)
+        self.execute_codes(program, main_fn, 0)
     }
 
-    pub fn execute_codes(&mut self, program: &Program, f: &Function) -> Result<(), Box<dyn Error>> {
+    pub fn execute_codes(
+        &mut self,
+        program: &Program,
+        f: &Function,
+        arg_cnt: u16,
+    ) -> Result<(), Box<dyn Error>> {
         match f {
             Function::Native { func, .. } => {
-                let val = func(&mut self.state);
+                let val = func(&mut self.state, arg_cnt);
                 self.state.stack.push(val);
             }
             Function::Custom {
@@ -320,11 +325,11 @@ impl Vm {
                             }
                         }
                         ByteCode::GetIndex => todo!(),
-                        ByteCode::Call { param_cnt } => {
-                            let idx = self.state.stack.len() - *param_cnt as usize - 1;
+                        ByteCode::Call { arg_cnt } => {
+                            let idx = self.state.stack.len() - *arg_cnt as usize - 1;
                             if let Some(f) = self.state.stack[idx].as_fn() {
                                 let f = &program.functions[f as usize];
-                                self.execute_codes(program, f)?;
+                                self.execute_codes(program, f, *arg_cnt)?;
                             }
                         }
                         ByteCode::Swap => {

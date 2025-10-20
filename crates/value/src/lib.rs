@@ -2,7 +2,7 @@ use std::cell::RefCell;
 use std::hash::{BuildHasher, DefaultHasher, Hash, Hasher};
 use std::rc::Rc;
 
-pub type NativeFnPtr = fn(&mut State) -> Value;
+pub type NativeFnPtr = fn(&mut State, arg_cnt: u16) -> Value;
 
 #[derive(Debug, Clone)]
 pub enum Value {
@@ -13,7 +13,6 @@ pub enum Value {
     String(Rc<String>),
     Object(Object),
     Fn(u32),
-    Struct(u32),
 }
 
 impl Value {
@@ -35,14 +34,6 @@ impl Value {
 
     pub fn as_fn(&self) -> Option<u32> {
         if let Self::Fn(f) = self {
-            Some(*f)
-        } else {
-            None
-        }
-    }
-
-    pub fn as_struct(&self) -> Option<u32> {
-        if let Self::Struct(f) = self {
             Some(*f)
         } else {
             None
@@ -109,10 +100,6 @@ impl Hash for Value {
                 state.write_u8(6);
                 v.hash(state);
             }
-            Value::Struct(v) => {
-                state.write_u8(7);
-                v.hash(state);
-            }
         }
     }
 }
@@ -126,7 +113,6 @@ impl PartialEq for Value {
             (Value::Float(l), Value::Float(r)) => l.to_ne_bytes().eq(&r.to_ne_bytes()),
             (Value::String(l), Value::String(r)) => l.eq(r),
             (Value::Fn(l), Value::Fn(r)) => l.eq(r),
-            (Value::Struct(l), Value::Struct(r)) => l.eq(r),
             (_, _) => false,
         }
     }

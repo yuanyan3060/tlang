@@ -47,7 +47,7 @@ fn main() {
         if m % 2 == 1 {
             continue;
         }
-        print(m);
+        print("m =", m);
         if m > 20 {
             break;
         }

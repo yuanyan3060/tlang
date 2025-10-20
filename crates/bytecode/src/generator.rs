@@ -2,7 +2,7 @@ use ast::{BinaryOp, UnaryOp};
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::rc::Rc;
-use value::{NativeFnPtr, State, Type, Value};
+use value::{NativeFnPtr, Type, Value};
 
 use crate::ByteCode;
 
@@ -753,7 +753,7 @@ impl Generator {
                     self.compile_expr(local_vars, arg, codes)?;
                 }
                 codes.push(ByteCode::Call {
-                    param_cnt: args.len() as u16 + is_method as u16,
+                    arg_cnt: args.len() as u16 + is_method as u16,
                 });
                 Ok(return_type)
             }
@@ -804,7 +804,7 @@ pub struct FnType {
 pub enum Function {
     Native {
         name: String,
-        func: fn(&mut State) -> Value,
+        func: NativeFnPtr,
         return_type: Option<Type>,
     },
     Custom {
