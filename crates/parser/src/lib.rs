@@ -425,6 +425,18 @@ impl<'a> Parser<'a> {
                         block: Box::new(block),
                     })
                 }
+                (Token::Break, _) => {
+                    self.bump();
+                    self.skip_newline();
+                    self.expect(TokenKind::Semicolon)?;
+                    ast::BlockStmt::Break
+                }
+                (Token::Continue, _) => {
+                    self.bump();
+                    self.skip_newline();
+                    self.expect(TokenKind::Semicolon)?;
+                    ast::BlockStmt::Continue
+                }
                 _ => {
                     let expr = self.parse_expr()?;
                     self.skip_newline();

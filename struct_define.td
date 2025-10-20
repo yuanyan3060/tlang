@@ -39,9 +39,18 @@ fn fibonacci(n: int) {
 }
 
 fn main() {
-    let h = Human("Bob", 18 + 1 * 2);
-    print(h.name);
-    print(h.get_age());
     print(fibonacci(20));
+    print("---------");
+    let m = 0;
+    while true {
+        m = m + 1;
+        if m % 2 == 1 {
+            continue;
+        }
+        print(m);
+        if m > 20 {
+            break;
+        }
+    }
     return;
 }

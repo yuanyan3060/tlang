@@ -231,6 +231,8 @@ impl<'a> Lex<'a> {
                     "if" => Token::If,
                     "while" => Token::While,
                     "else" => Token::Else,
+                    "break" => Token::Break,
+                    "continue" => Token::Continue,
                     _ => Token::Ident(ident),
                 }
             }

@@ -1,7 +1,6 @@
+use std::collections::HashMap;
 use std::fmt::Display;
 use std::rc::Rc;
-use std::collections::HashMap;
-
 use ast::{BinaryOp, UnaryOp};
 use value::{NativeFnPtr, State, Type, Value};
 
@@ -306,7 +305,9 @@ impl Generator {
         local_vars: &mut HashMap<String, LocalVar>,
         codes: &mut Vec<ByteCode>,
         is_init: bool,
-    ) -> Result<()> {
+    ) -> Result<JumpIndex> {
+        let mut jumps = JumpIndex::default();
+
         for stmt in &body.statements {
             match stmt {
                 ast::BlockStmt::Let(let_stmt) => {
@@ -395,11 +396,15 @@ impl Generator {
                     }
                     let then_start = codes.len();
                     codes.push(ByteCode::JumpIfFalse { offset: 0 });
-                    self.compile_block(&if_stmt.then_branch, local_vars, codes, is_init)?;
+                    let jump =
+                        self.compile_block(&if_stmt.then_branch, local_vars, codes, is_init)?;
+                    jumps.extend(jump);
+
                     let else_start = codes.len();
                     codes.push(ByteCode::Jump { offset: 0 });
                     if let Some(block) = &if_stmt.else_branch {
-                        self.compile_block(block, local_vars, codes, is_init)?;
+                        let jump = self.compile_block(block, local_vars, codes, is_init)?;
+                        jumps.extend(jump);
                     }
                     let else_end = codes.len();
                     codes[then_start] = ByteCode::JumpIfFalse {
@@ -417,7 +422,9 @@ impl Generator {
                     }
                     let start = codes.len();
                     codes.push(ByteCode::JumpIfFalse { offset: 0 });
-                    self.compile_block(&while_stmt.block, local_vars, codes, is_init)?;
+
+                    let jump = self.compile_block(&while_stmt.block, local_vars, codes, is_init)?;
+
                     codes.push(ByteCode::Jump {
                         offset: while_start as u32,
                     });
@@ -425,13 +432,34 @@ impl Generator {
                     codes[start] = ByteCode::JumpIfFalse {
                         offset: offset as u32,
                     };
+
+                    for b in jump.breaks {
+                        codes[b] = ByteCode::Jump {
+                            offset: offset as u32,
+                        };
+                    }
+
+                    for c in jump.continues {
+                        codes[c] = ByteCode::Jump {
+                            offset: while_start as u32,
+                        };
+                    }
+                }
+                ast::BlockStmt::Continue => {
+                    jumps.continues.push(codes.len());
+                    codes.push(ByteCode::Jump { offset: u32::MAX });
+                }
+                ast::BlockStmt::Break => {
+                    jumps.breaks.push(codes.len());
+                    codes.push(ByteCode::Jump { offset: u32::MAX });
                 }
                 ast::BlockStmt::Block(block) => {
-                    self.compile_block(block, local_vars, codes, is_init)?;
+                    let block_jump = self.compile_block(block, local_vars, codes, is_init)?;
+                    jumps.extend(block_jump);
                 }
             }
         }
-        Ok(())
+        Ok(jumps)
     }
 
     pub fn compile_fn(
@@ -468,7 +496,14 @@ impl Generator {
         }
         codes.push(ByteCode::Pop);
 
-        self.compile_block(body, &mut local_vars, &mut codes, is_init)?;
+        let jump = self.compile_block(body, &mut local_vars, &mut codes, is_init)?;
+        if !jump.breaks.is_empty() {
+            return Err(Error::InvalidBreak);
+        }
+
+        if !jump.continues.is_empty() {
+            return Err(Error::InvalidContinue);
+        }
 
         if is_init {
             codes.push(ByteCode::Load { idx: 0 });
@@ -851,6 +886,8 @@ pub enum Error {
     NonBooleanCondition,
     NonBooleanAnd,
     NonBooleanOr,
+    InvalidBreak,
+    InvalidContinue,
 }
 impl Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -927,4 +964,17 @@ impl<T> Map<T> {
 pub enum Member {
     Field { offset: usize, ty: Type },
     Method { idx: usize, return_ty: Type },
+}
+
+#[derive(Default)]
+pub struct JumpIndex {
+    breaks: Vec<usize>,
+    continues: Vec<usize>,
+}
+
+impl JumpIndex {
+    pub fn extend(&mut self, other: JumpIndex) {
+        self.breaks.extend(other.breaks);
+        self.continues.extend(other.continues);
+    }
 }

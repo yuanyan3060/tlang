@@ -58,6 +58,8 @@ pub enum BlockStmt {
     Block(Box<Block>),
     If(IfStmt),
     While(WhileStmt),
+    Break,
+    Continue,
 }
 
 #[derive(Debug)]
