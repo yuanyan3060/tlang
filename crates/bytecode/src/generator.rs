@@ -1,7 +1,7 @@
+use ast::{BinaryOp, UnaryOp};
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::rc::Rc;
-use ast::{BinaryOp, UnaryOp};
 use value::{NativeFnPtr, State, Type, Value};
 
 use crate::ByteCode;
@@ -192,7 +192,6 @@ impl Generator {
 
     pub fn get_type(&mut self, name: &str) -> Result<Type> {
         match name {
-            "void" => Ok(Type::Void),
             "nil" => Ok(Type::Nil),
             "bool" => Ok(Type::Bool),
             "int" => Ok(Type::Int),
@@ -229,7 +228,7 @@ impl Generator {
         {
             return Ok(Member::Method {
                 idx,
-                return_ty: f.return_ty.unwrap_or(Type::Void),
+                return_ty: f.return_ty.unwrap_or(Type::Nil),
             });
         };
         Err(Error::MissStructField {
@@ -734,7 +733,6 @@ impl Generator {
                     _ => {
                         let fn_type = self.compile_expr(local_vars, func, codes)?;
                         match fn_type {
-                            Type::Void => todo!(),
                             Type::Nil => todo!(),
                             Type::Bool => todo!(),
                             Type::Int => todo!(),
@@ -746,7 +744,7 @@ impl Generator {
                             }
                             Type::Func(idx) => {
                                 let f = self.fn_map.get(idx as usize).unwrap();
-                                f.return_ty.unwrap_or(Type::Void)
+                                f.return_ty.unwrap_or(Type::Nil)
                             }
                         }
                     }

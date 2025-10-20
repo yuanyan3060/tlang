@@ -6,7 +6,6 @@ pub type NativeFnPtr = fn(&mut State) -> Value;
 
 #[derive(Debug, Clone)]
 pub enum Value {
-    Void,
     Nil,
     Bool(bool),
     Int(i64),
@@ -53,7 +52,6 @@ impl Value {
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub enum Type {
-    Void,
     Nil,
     Bool,
     Int,
@@ -83,37 +81,36 @@ impl Object {
 impl Hash for Value {
     fn hash<H: Hasher>(&self, state: &mut H) {
         match self {
-            Value::Void => state.write_u8(0),
-            Value::Nil => state.write_u8(1),
+            Value::Nil => state.write_u8(0),
             Value::Bool(v) => {
-                state.write_u8(2);
+                state.write_u8(1);
                 v.hash(state);
             }
             Value::Int(v) => {
-                state.write_u8(3);
+                state.write_u8(2);
                 v.hash(state);
             }
             Value::Float(v) => {
-                state.write_u8(4);
+                state.write_u8(3);
                 state.write_u64(u64::from_ne_bytes(v.to_ne_bytes()));
             }
             Value::String(v) => {
-                state.write_u8(5);
+                state.write_u8(4);
                 v.hash(state);
             }
             Value::Object(v) => {
-                state.write_u8(6);
+                state.write_u8(5);
                 v.ty.hash(state);
                 for field in &*v.fields.borrow() {
                     field.hash(state);
                 }
             }
             Value::Fn(v) => {
-                state.write_u8(7);
+                state.write_u8(6);
                 v.hash(state);
             }
             Value::Struct(v) => {
-                state.write_u8(8);
+                state.write_u8(7);
                 v.hash(state);
             }
         }

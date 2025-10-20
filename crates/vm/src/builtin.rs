@@ -5,7 +5,6 @@ pub fn builtin_print(state: &mut State) -> Value {
     state.stack.pop();
 
     match value {
-        Value::Void => println!("void"),
         Value::Nil => println!("nil"),
         Value::Bool(v) => println!("{}", v),
         Value::Int(v) => println!("{}", v),

@@ -33,12 +33,7 @@ impl Vm {
         let mut parser = Parser::new(tokens.iter());
         let program = parser.parse_program()?;
         let mut g = Generator::new();
-        g.register_native_fn(
-            "print",
-            builtin::builtin_print,
-            vec![Type::Void],
-            Type::Void,
-        )?;
+        g.register_native_fn("print", builtin::builtin_print, vec![Type::Nil], Type::Nil)?;
         g.register_native_fn("timestamp", builtin::builtin_timestamp, vec![], Type::Float)?;
         let p = g.compile(&program)?;
         #[cfg(debug_assertions)]
@@ -75,7 +70,7 @@ impl Vm {
             } => {
                 let local_offset = self.state.locals.len();
                 for _ in 0..*local_var_cnt {
-                    self.state.locals.push(Value::Void);
+                    self.state.locals.push(Value::Nil);
                 }
 
                 let mut code_offset = 0;
