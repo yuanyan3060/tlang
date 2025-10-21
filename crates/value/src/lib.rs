@@ -145,6 +145,8 @@ pub struct State<'gc> {
     pub locals: Vec<Value<'gc>>,
     pub stack: Vec<Value<'gc>>,
     pub constants: Vec<Value<'gc>>,
+    pub code_exec_cnt: u32,
+    pub last_collect_time: u32, 
 }
 
 impl<'gc> Default for State<'gc> {
@@ -159,6 +161,8 @@ impl<'gc> State<'gc> {
             stack: Vec::with_capacity(4096),
             locals: Vec::with_capacity(4096),
             constants: Vec::new(),
+            code_exec_cnt: 0,
+            last_collect_time: 0
         }
     }
 }
