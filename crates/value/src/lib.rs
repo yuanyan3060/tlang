@@ -1,24 +1,26 @@
-use std::cell::RefCell;
 use std::hash::{BuildHasher, DefaultHasher, Hash, Hasher};
-use std::rc::Rc;
 
-pub type NativeFnPtr = fn(&mut State, arg_cnt: u16) -> Value;
+use gc_arena::lock::{GcRefLock, RefLock};
+use gc_arena::{Collect, Gc, Mutation};
 
-#[derive(Debug, Clone)]
-pub enum Value {
+pub type NativeFnPtr = for<'a> fn(&'a Mutation, &mut State, arg_cnt: u16) -> Value<'a>;
+
+#[derive(Debug, Clone, Copy, Collect)]
+#[collect(no_drop)]
+pub enum Value<'gc> {
     Nil,
     Bool(bool),
     Int(i64),
     Float(f64),
-    String(Rc<String>),
-    Object(Object),
+    String(Gc<'gc, String>),
+    Object(Gc<'gc, Object<'gc>>),
     Fn(u32),
 }
 
-impl Value {
-    pub fn as_obj(&mut self) -> Option<&mut Object> {
+impl<'gc> Value<'gc> {
+    pub fn as_obj(&self) -> Option<Gc<'gc, Object<'gc>>> {
         if let Self::Object(obj) = self {
-            Some(obj)
+            Some(*obj)
         } else {
             None
         }
@@ -39,9 +41,17 @@ impl Value {
             None
         }
     }
+
+    pub fn as_str(&self) -> Option<&str> {
+        match self {
+            Value::String(v) => Some(v),
+            _ => None,
+        }
+    }
 }
 
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, Collect)]
+#[collect(no_drop)]
 pub enum Type {
     Nil,
     Bool,
@@ -54,22 +64,23 @@ pub enum Type {
     Func(u32),
 }
 
-#[derive(Debug, Clone)]
-pub struct Object {
+#[derive(Debug, Clone, Copy, Collect)]
+#[collect(no_drop)]
+pub struct Object<'gc> {
     ty: Type,
-    pub fields: Rc<RefCell<Vec<Value>>>,
+    pub fields: GcRefLock<'gc, Vec<Value<'gc>>>,
 }
 
-impl Object {
-    pub fn new(ty: Type, field_cnt: usize) -> Self {
+impl<'gc> Object<'gc> {
+    pub fn new(mc: &'gc Mutation<'gc>, ty: Type, field_cnt: usize) -> Self {
         Self {
             ty,
-            fields: Rc::new(RefCell::new(vec![Value::Nil; field_cnt])),
+            fields: GcRefLock::new(mc, RefLock::new(vec![Value::Nil; field_cnt])),
         }
     }
 }
 
-impl Hash for Value {
+impl<'gc> Hash for Value<'gc> {
     fn hash<H: Hasher>(&self, state: &mut H) {
         match self {
             Value::Nil => state.write_u8(0),
@@ -104,7 +115,7 @@ impl Hash for Value {
     }
 }
 
-impl PartialEq for Value {
+impl<'gc> PartialEq for Value<'gc> {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Value::Nil, Value::Nil) => true,
@@ -118,9 +129,9 @@ impl PartialEq for Value {
     }
 }
 
-impl Eq for Value {}
+impl<'gc> Eq for Value<'gc> {}
 
-impl BuildHasher for Value {
+impl<'gc> BuildHasher for Value<'gc> {
     type Hasher = DefaultHasher;
 
     fn build_hasher(&self) -> Self::Hasher {
@@ -128,31 +139,43 @@ impl BuildHasher for Value {
     }
 }
 
-impl Value {
-    pub fn as_str(&self) -> Option<&str> {
-        match self {
-            Value::String(v) => Some(v),
-            _ => None,
-        }
+pub struct Instant(pub std::time::Instant);
+
+unsafe impl Collect for Instant {
+    fn needs_trace() -> bool
+    where
+        Self: Sized,
+    {
+        true
     }
+
+    fn trace(&self, _cc: &gc_arena::Collection) {}
 }
 
-pub struct State {
-    pub locals: Vec<Value>,
-    pub stack: Vec<Value>,
+#[derive(Collect)]
+#[collect(no_drop)]
+pub struct State<'gc> {
+    pub locals: Vec<Value<'gc>>,
+    pub stack: Vec<Value<'gc>>,
+    pub constants: Vec<Value<'gc>>,
+    pub jump_cnt: u32,
+    pub last_collect_time: Instant,
 }
 
-impl Default for State {
+impl<'gc> Default for State<'gc> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl State {
+impl<'gc> State<'gc> {
     pub fn new() -> Self {
         Self {
             stack: Vec::with_capacity(4096),
             locals: Vec::with_capacity(4096),
+            constants: Vec::new(),
+            jump_cnt: 0,
+            last_collect_time: Instant(std::time::Instant::now()),
         }
     }
 }

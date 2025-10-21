@@ -1,6 +1,7 @@
+use gc_arena::Mutation;
 use value::{State, Value};
 
-pub fn builtin_print(state: &mut State, arg_cnt: u16) -> Value {
+pub fn builtin_print<'gc>(_: &'gc Mutation, state: &mut State, arg_cnt: u16) -> Value<'gc> {
     if state.stack.len() < arg_cnt as usize + 1 {
         panic!("builtin_print wrong arg")
     }
@@ -31,7 +32,7 @@ pub fn builtin_print(state: &mut State, arg_cnt: u16) -> Value {
     Value::Nil
 }
 
-pub fn builtin_timestamp(state: &mut State, arg_cnt: u16) -> Value {
+pub fn builtin_timestamp<'gc>(_: &'gc Mutation, state: &mut State, arg_cnt: u16) -> Value<'gc> {
     for _ in 0..arg_cnt {
         state.stack.pop();
     }

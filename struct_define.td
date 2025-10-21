@@ -39,18 +39,13 @@ fn fibonacci(n: int) {
 }
 
 fn main() {
-    print(fibonacci(20));
-    print("---------");
+    let start = timestamp();
     let m = 0;
-    while true {
+    while m < 1000000 {
+        fibonacci(20);
         m = m + 1;
-        if m % 2 == 1 {
-            continue;
-        }
-        print("m =", m);
-        if m > 20 {
-            break;
-        }
     }
+
+    print(timestamp() - start);
     return;
 }

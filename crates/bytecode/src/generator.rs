@@ -1,13 +1,12 @@
 use ast::{BinaryOp, UnaryOp};
 use std::collections::HashMap;
 use std::fmt::Display;
-use std::rc::Rc;
-use value::{NativeFnPtr, Type, Value};
+use value::{NativeFnPtr, Type};
 
 use crate::ByteCode;
 
 pub struct Generator {
-    pub constant_map: Map<Value>,
+    pub constant_map: Map<String>,
     pub struct_map: Map<StructType>,
     pub fn_map: Map<FnType>,
     pub functions: Vec<Function>,
@@ -33,8 +32,7 @@ impl Generator {
         if let Some(idx) = self.constant_map.get_idx(text) {
             return idx;
         }
-        self.constant_map
-            .insert(text, Value::String(Rc::new(text.to_string())))
+        self.constant_map.insert(text, text.to_string())
     }
 
     pub fn register_native_fn(
@@ -846,7 +844,7 @@ impl Function {
 
 #[derive(Debug)]
 pub struct Program {
-    pub constants: Vec<Value>,
+    pub constants: Vec<String>,
     pub structs: Vec<StructType>,
     pub functions: Vec<Function>,
     pub entry_function: usize,
