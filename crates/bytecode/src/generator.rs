@@ -259,7 +259,6 @@ impl Generator {
                             &function_def.body,
                             Some(self_ty),
                             return_ty,
-                            function_def.name == "new",
                         )?;
 
                         functions.push(f);
@@ -277,7 +276,6 @@ impl Generator {
                         &function_def.body,
                         None,
                         return_ty,
-                        false,
                     )?;
                     if function_def.name == "main" {
                         entry_function = Some(functions.len())
@@ -301,7 +299,6 @@ impl Generator {
         body: &ast::Block,
         local_vars: &mut HashMap<String, LocalVar>,
         codes: &mut Vec<ByteCode>,
-        is_init: bool,
     ) -> Result<JumpIndex> {
         let mut jumps = JumpIndex::default();
 
@@ -375,8 +372,6 @@ impl Generator {
                 ast::BlockStmt::Return(return_stmt) => {
                     if let Some(expr) = &return_stmt.expr {
                         self.compile_expr(local_vars, expr, codes)?;
-                    } else if is_init {
-                        codes.push(ByteCode::Load { idx: 0 });
                     } else {
                         codes.push(ByteCode::LoadNil);
                     }
@@ -394,13 +389,13 @@ impl Generator {
                     let then_start = codes.len();
                     codes.push(ByteCode::JumpIfFalse { offset: 0 });
                     let jump =
-                        self.compile_block(&if_stmt.then_branch, local_vars, codes, is_init)?;
+                        self.compile_block(&if_stmt.then_branch, local_vars, codes)?;
                     jumps.extend(jump);
 
                     let else_start = codes.len();
                     codes.push(ByteCode::Jump { offset: 0 });
                     if let Some(block) = &if_stmt.else_branch {
-                        let jump = self.compile_block(block, local_vars, codes, is_init)?;
+                        let jump = self.compile_block(block, local_vars, codes)?;
                         jumps.extend(jump);
                     }
                     let else_end = codes.len();
@@ -420,7 +415,7 @@ impl Generator {
                     let start = codes.len();
                     codes.push(ByteCode::JumpIfFalse { offset: 0 });
 
-                    let jump = self.compile_block(&while_stmt.block, local_vars, codes, is_init)?;
+                    let jump = self.compile_block(&while_stmt.block, local_vars, codes)?;
 
                     codes.push(ByteCode::Jump {
                         offset: while_start as u32,
@@ -451,7 +446,7 @@ impl Generator {
                     codes.push(ByteCode::Jump { offset: u32::MAX });
                 }
                 ast::BlockStmt::Block(block) => {
-                    let block_jump = self.compile_block(block, local_vars, codes, is_init)?;
+                    let block_jump = self.compile_block(block, local_vars, codes)?;
                     jumps.extend(block_jump);
                 }
             }
@@ -466,7 +461,6 @@ impl Generator {
         body: &ast::Block,
         self_type: Option<Type>,
         return_type: Option<Type>,
-        is_init: bool,
     ) -> Result<Function> {
         let mut local_vars = HashMap::new();
 
@@ -493,7 +487,7 @@ impl Generator {
         }
         codes.push(ByteCode::Pop);
 
-        let jump = self.compile_block(body, &mut local_vars, &mut codes, is_init)?;
+        let jump = self.compile_block(body, &mut local_vars, &mut codes)?;
         if !jump.breaks.is_empty() {
             return Err(Error::InvalidBreak);
         }
@@ -502,11 +496,7 @@ impl Generator {
             return Err(Error::InvalidContinue);
         }
 
-        if is_init {
-            codes.push(ByteCode::Load { idx: 0 });
-        } else {
-            codes.push(ByteCode::LoadNil);
-        }
+        codes.push(ByteCode::LoadNil);
 
         codes.push(ByteCode::Return);
         Ok(Function::Custom {

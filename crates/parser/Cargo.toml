@@ -13,6 +13,5 @@ name = "parser"
 [dependencies]
 value = { path = "../value" }
 token = { path = "../token" }
-bytecode = { path = "../bytecode" }
 lex = { path = "../lex"}
 ast = { path = "../ast"}

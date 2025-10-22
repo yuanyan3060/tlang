@@ -1,8 +1,18 @@
-fn main() {
-    let a = "你好\n世界";
-    let x = [1, 2, 3, 4, 5, 6];
-    let mut x = x.iter();
-    x.next();
-    println!("{:?}", x.as_slice());
-    println!("{}", a)
+use std::error::Error;
+
+use lex::Lex;
+use parser::Parser;
+
+fn main() -> Result<(), Box<dyn Error>> {
+    let code = std::fs::read_to_string("struct_define.td")?;
+    let lex = Lex::new(code.chars());
+    let tokens = lex.all();
+    #[cfg(debug_assertions)]
+    lex::pretty_print(&tokens);
+    let mut parser = Parser::new(tokens.iter());
+    let program = parser.parse_program()?;
+    println!("{:#?}", program);
+    Ok(())
 }
+
+pub struct Human {}

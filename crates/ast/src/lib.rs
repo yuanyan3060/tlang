@@ -119,6 +119,16 @@ pub enum Expr {
         target: Box<Expr>,
         member: String,
     },
+    Struct {
+        struct_name: String,
+        fields: Vec<FieldAssign>
+    },
+}
+
+#[derive(Debug)]
+pub struct FieldAssign {
+    pub field: String,
+    pub expr: Expr
 }
 
 #[derive(Debug, Clone, Copy)]

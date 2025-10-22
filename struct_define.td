@@ -2,9 +2,11 @@ struct Human {
     name: str
     age: int
 
-    fn new(self, name: str, age: int) {
-        self.name = name;
-        self.age = age;
+    fn new(name: str, age: int) -> Human {
+        return Human {
+            name: name,
+            age: age
+        }
     }
 
     fn get_age(self) -> int {
@@ -29,23 +31,16 @@ fn fibonacci(n: int) {
     let b = 1;
     let count = 2;
 
-    while count <= n {
-        let tmp = a + b;
-        a = b;
-        b = tmp;
-        count =  count + 1;
+    while count <= Human {
+
     }
+
+    Human {};
     return b;
 }
 
 fn main() {
-    let start = timestamp();
-    let m = 0;
-    while m < 1000000 {
-        fibonacci(20);
-        m = m + 1;
-    }
-
-    print(timestamp() - start);
+    let h = Human("Bob", 18);
+    print(h.name);
     return;
 }

@@ -356,7 +356,7 @@ impl<'a> Parser<'a> {
                     self.skip_newline();
                     self.expect(TokenKind::Assign)?;
                     self.skip_newline();
-                    let expr = self.parse_add_sub_expr()?;
+                    let expr = self.parse_add_sub_expr(true)?;
                     ast::BlockStmt::Let(LetStmt {
                         var_name: name,
                         expr,
@@ -369,7 +369,7 @@ impl<'a> Parser<'a> {
                         self.bump();
                         None
                     } else {
-                        let expr = self.parse_add_sub_expr()?;
+                        let expr = self.parse_add_sub_expr(true)?;
                         Some(expr)
                     };
 
@@ -391,7 +391,7 @@ impl<'a> Parser<'a> {
                     self.bump();
 
                     self.skip_newline();
-                    let condition = self.parse_expr()?;
+                    let condition = self.parse_expr(false)?;
 
                     self.skip_newline();
                     let then_branch = self.parse_block()?;
@@ -415,7 +415,7 @@ impl<'a> Parser<'a> {
                     self.bump();
 
                     self.skip_newline();
-                    let condition = self.parse_expr()?;
+                    let condition = self.parse_expr(false)?;
 
                     self.skip_newline();
                     let block = self.parse_block()?;
@@ -438,13 +438,13 @@ impl<'a> Parser<'a> {
                     ast::BlockStmt::Continue
                 }
                 _ => {
-                    let expr = self.parse_expr()?;
+                    let expr = self.parse_expr(true)?;
                     self.skip_newline();
                     let stmt = if self.first_check(TokenKind::Assign) {
                         self.bump();
                         self.skip_newline();
                         let assign = ast::AssignStmt {
-                            expr: self.parse_expr()?,
+                            expr: self.parse_expr(true)?,
                             target: expr,
                         };
                         ast::BlockStmt::Assign(assign)
@@ -461,13 +461,13 @@ impl<'a> Parser<'a> {
         Ok(ast::Block { statements: stmts })
     }
 
-    pub fn parse_expr(&mut self) -> ParseResult<ast::Expr> {
-        self.parse_or_expr()
+    pub fn parse_expr(&mut self, allow_struct: bool) -> ParseResult<ast::Expr> {
+        self.parse_or_expr(allow_struct)
     }
 
-    pub fn parse_or_expr(&mut self) -> ParseResult<ast::Expr> {
+    pub fn parse_or_expr(&mut self, allow_struct: bool) -> ParseResult<ast::Expr> {
         self.skip_newline();
-        let mut curr = self.parse_and_expr()?;
+        let mut curr = self.parse_and_expr(allow_struct)?;
         loop {
             self.skip_newline();
             if !matches!(self.first(), Token::Or) {
@@ -475,7 +475,7 @@ impl<'a> Parser<'a> {
             }
             let op = self.parse_binary_op()?;
             self.skip_newline();
-            let right = self.parse_and_expr()?;
+            let right = self.parse_and_expr(allow_struct)?;
             curr = ast::Expr::Binary {
                 left: Box::new(curr),
                 op,
@@ -485,9 +485,9 @@ impl<'a> Parser<'a> {
         Ok(curr)
     }
 
-    pub fn parse_and_expr(&mut self) -> ParseResult<ast::Expr> {
+    pub fn parse_and_expr(&mut self, allow_struct: bool) -> ParseResult<ast::Expr> {
         self.skip_newline();
-        let mut curr = self.parse_relation_expr()?;
+        let mut curr = self.parse_relation_expr(allow_struct)?;
         loop {
             self.skip_newline();
             if !matches!(self.first(), Token::And) {
@@ -495,7 +495,7 @@ impl<'a> Parser<'a> {
             }
             let op = self.parse_binary_op()?;
             self.skip_newline();
-            let right = self.parse_relation_expr()?;
+            let right = self.parse_relation_expr(allow_struct)?;
             curr = ast::Expr::Binary {
                 left: Box::new(curr),
                 op,
@@ -505,9 +505,9 @@ impl<'a> Parser<'a> {
         Ok(curr)
     }
 
-    pub fn parse_relation_expr(&mut self) -> ParseResult<ast::Expr> {
+    pub fn parse_relation_expr(&mut self, allow_struct: bool) -> ParseResult<ast::Expr> {
         self.skip_newline();
-        let mut curr = self.parse_bit_or_expr()?;
+        let mut curr = self.parse_bit_or_expr(allow_struct)?;
         loop {
             self.skip_newline();
             if !matches!(
@@ -523,7 +523,7 @@ impl<'a> Parser<'a> {
             }
             let op = self.parse_binary_op()?;
             self.skip_newline();
-            let right = self.parse_bit_or_expr()?;
+            let right = self.parse_bit_or_expr(allow_struct)?;
             curr = ast::Expr::Binary {
                 left: Box::new(curr),
                 op,
@@ -533,9 +533,9 @@ impl<'a> Parser<'a> {
         Ok(curr)
     }
 
-    pub fn parse_bit_or_expr(&mut self) -> ParseResult<ast::Expr> {
+    pub fn parse_bit_or_expr(&mut self, allow_struct: bool) -> ParseResult<ast::Expr> {
         self.skip_newline();
-        let mut curr = self.parse_bit_xor_expr()?;
+        let mut curr = self.parse_bit_xor_expr(allow_struct)?;
         loop {
             self.skip_newline();
             if !matches!(self.first(), Token::BitOr) {
@@ -543,7 +543,7 @@ impl<'a> Parser<'a> {
             }
             let op = self.parse_binary_op()?;
             self.skip_newline();
-            let right = self.parse_bit_xor_expr()?;
+            let right = self.parse_bit_xor_expr(allow_struct)?;
             curr = ast::Expr::Binary {
                 left: Box::new(curr),
                 op,
@@ -553,9 +553,9 @@ impl<'a> Parser<'a> {
         Ok(curr)
     }
 
-    pub fn parse_bit_xor_expr(&mut self) -> ParseResult<ast::Expr> {
+    pub fn parse_bit_xor_expr(&mut self, allow_struct: bool) -> ParseResult<ast::Expr> {
         self.skip_newline();
-        let mut curr = self.parse_bit_and_expr()?;
+        let mut curr = self.parse_bit_and_expr(allow_struct)?;
         loop {
             self.skip_newline();
             if !matches!(self.first(), Token::BitXor) {
@@ -563,7 +563,7 @@ impl<'a> Parser<'a> {
             }
             let op = self.parse_binary_op()?;
             self.skip_newline();
-            let right = self.parse_bit_and_expr()?;
+            let right = self.parse_bit_and_expr(allow_struct)?;
             curr = ast::Expr::Binary {
                 left: Box::new(curr),
                 op,
@@ -573,9 +573,9 @@ impl<'a> Parser<'a> {
         Ok(curr)
     }
 
-    pub fn parse_bit_and_expr(&mut self) -> ParseResult<ast::Expr> {
+    pub fn parse_bit_and_expr(&mut self, allow_struct: bool) -> ParseResult<ast::Expr> {
         self.skip_newline();
-        let mut curr = self.parse_add_sub_expr()?;
+        let mut curr = self.parse_add_sub_expr(allow_struct)?;
         loop {
             self.skip_newline();
             if !matches!(self.first(), Token::BitAnd) {
@@ -583,7 +583,7 @@ impl<'a> Parser<'a> {
             }
             let op = self.parse_binary_op()?;
             self.skip_newline();
-            let right = self.parse_add_sub_expr()?;
+            let right = self.parse_add_sub_expr(allow_struct)?;
             curr = ast::Expr::Binary {
                 left: Box::new(curr),
                 op,
@@ -593,9 +593,9 @@ impl<'a> Parser<'a> {
         Ok(curr)
     }
 
-    pub fn parse_add_sub_expr(&mut self) -> ParseResult<ast::Expr> {
+    pub fn parse_add_sub_expr(&mut self, allow_struct: bool) -> ParseResult<ast::Expr> {
         self.skip_newline();
-        let mut curr = self.parse_mul_div_mod_expr()?;
+        let mut curr = self.parse_mul_div_mod_expr(allow_struct)?;
         loop {
             self.skip_newline();
             if !matches!(self.first(), Token::Plus | Token::Minus) {
@@ -603,7 +603,7 @@ impl<'a> Parser<'a> {
             }
             let op = self.parse_binary_op()?;
             self.skip_newline();
-            let right = self.parse_mul_div_mod_expr()?;
+            let right = self.parse_mul_div_mod_expr(allow_struct)?;
             curr = ast::Expr::Binary {
                 left: Box::new(curr),
                 op,
@@ -613,9 +613,9 @@ impl<'a> Parser<'a> {
         Ok(curr)
     }
 
-    pub fn parse_mul_div_mod_expr(&mut self) -> ParseResult<ast::Expr> {
+    pub fn parse_mul_div_mod_expr(&mut self, allow_struct: bool) -> ParseResult<ast::Expr> {
         self.skip_newline();
-        let mut curr = self.parse_factor()?;
+        let mut curr = self.parse_factor(allow_struct)?;
         loop {
             self.skip_newline();
             if !matches!(self.first(), Token::Star | Token::Slash | Token::Percent) {
@@ -623,7 +623,7 @@ impl<'a> Parser<'a> {
             }
             let op = self.parse_binary_op()?;
             self.skip_newline();
-            let right = self.parse_factor()?;
+            let right = self.parse_factor(allow_struct)?;
             curr = ast::Expr::Binary {
                 left: Box::new(curr),
                 op,
@@ -633,47 +633,47 @@ impl<'a> Parser<'a> {
         Ok(curr)
     }
 
-    pub fn parse_factor(&mut self) -> ParseResult<ast::Expr> {
+    pub fn parse_factor(&mut self, allow_struct: bool) -> ParseResult<ast::Expr> {
         self.skip_newline();
         match self.first() {
             Token::Not => {
                 self.bump();
                 Ok(ast::Expr::Unary {
                     op: ast::UnaryOp::Not,
-                    expr: Box::new(self.parse_primary()?),
+                    expr: Box::new(self.parse_primary(allow_struct)?),
                 })
             }
             Token::BitNot => {
                 self.bump();
                 Ok(ast::Expr::Unary {
                     op: ast::UnaryOp::BitNot,
-                    expr: Box::new(self.parse_primary()?),
+                    expr: Box::new(self.parse_primary(allow_struct)?),
                 })
             }
             Token::Plus => {
                 self.bump();
                 Ok(ast::Expr::Unary {
                     op: ast::UnaryOp::Plus,
-                    expr: Box::new(self.parse_primary()?),
+                    expr: Box::new(self.parse_primary(allow_struct)?),
                 })
             }
             Token::Minus => {
                 self.bump();
                 Ok(ast::Expr::Unary {
                     op: ast::UnaryOp::Minus,
-                    expr: Box::new(self.parse_primary()?),
+                    expr: Box::new(self.parse_primary(allow_struct)?),
                 })
             }
-            _ => self.parse_primary(),
+            _ => self.parse_primary(allow_struct),
         }
     }
 
-    pub fn parse_primary(&mut self) -> ParseResult<ast::Expr> {
+    pub fn parse_primary(&mut self, allow_struct: bool) -> ParseResult<ast::Expr> {
         self.skip_newline();
         let mut expr = match self.first_full() {
             (Token::OpenParen, _) => {
                 self.bump();
-                let expr = self.parse_or_expr()?;
+                let expr = self.parse_or_expr(true)?;
                 self.skip_newline();
                 self.expect(TokenKind::CloseParen)?;
                 expr
@@ -681,7 +681,37 @@ impl<'a> Parser<'a> {
             (Token::Ident(name), _) => {
                 let name = name.to_string();
                 self.bump();
-                ast::Expr::Ident(name)
+                self.skip_newline();
+                if allow_struct && self.first_check(TokenKind::OpenBrace) {
+                    self.bump();
+                    self.skip_newline();
+                    let mut fields = Vec::new();
+                    loop {
+                        self.skip_newline();
+                        if self.first_check(TokenKind::CloseBrace) {
+                            self.bump();
+                            break;
+                        }
+
+                        let field = self.expect_ident()?;
+                        self.skip_newline();
+                        self.expect(TokenKind::Colon)?;
+
+                        self.skip_newline();
+                        let expr = self.parse_expr(true)?;
+
+                        fields.push(ast::FieldAssign { field, expr });
+                        self.skip_newline();
+                        if self.first_check(TokenKind::Comma) {
+                            self.bump();
+                        }
+
+                    }
+                    ast::Expr::Struct { struct_name: name, fields }
+                } else {
+                    ast::Expr::Ident(name)
+                }
+                
             }
             (Token::Literal(literal), _) => {
                 let literal = literal.clone();
@@ -763,7 +793,7 @@ impl<'a> Parser<'a> {
                     break;
                 }
                 _ => {
-                    args.push(self.parse_expr()?);
+                    args.push(self.parse_expr(true)?);
                     comma_ok = true;
                     paren_ok = true;
                 }
