@@ -700,18 +700,39 @@ impl<'a> Parser<'a> {
                         self.skip_newline();
                         let expr = self.parse_expr(true)?;
 
-                        fields.push(ast::FieldAssign { field, expr });
+                        fields.push(ast::FieldAssign { name: field, expr });
                         self.skip_newline();
                         if self.first_check(TokenKind::Comma) {
                             self.bump();
                         }
-
                     }
-                    ast::Expr::Struct { struct_name: name, fields }
+                    ast::Expr::Struct {
+                        struct_name: name,
+                        fields,
+                    }
+                } else if self.first_check(TokenKind::Path) {
+                    self.bump();
+                    let mut segment = vec![name];
+                    loop {
+                        self.skip_newline();
+                        if self.first_check(TokenKind::Ident) {
+                            segment.push(self.expect_ident()?);
+                        } else {
+                            break;
+                        }
+
+                        self.skip_newline();
+                        if self.first_check(TokenKind::Path) {
+                            self.bump();
+                        } else {
+                            break;
+                        }
+                    }
+
+                    ast::Expr::Path { segment }
                 } else {
                     ast::Expr::Ident(name)
                 }
-                
             }
             (Token::Literal(literal), _) => {
                 let literal = literal.clone();

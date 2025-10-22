@@ -12,35 +12,30 @@ struct Human {
     fn get_age(self) -> int {
         return self.age;
     }
-}
 
-fn run(a: int, b: int) -> int {
-    return a + b;
-}
-
-fn fibonacci(n: int) {
-    if n <= 0 {
-        return 0;
-    } 
-
-    if n == 1 {
-        return 1;
-    }
-        
-    let a = 0;
-    let b = 1;
-    let count = 2;
-
-    while count <= Human {
-
+    fn add_age(self, a: int) -> int {
+        self.age = self.age + a;
+        return self.age;
     }
 
-    Human {};
-    return b;
+    fn to_str(self) -> str {
+        return "Human(name: \"" + self.name + "\", age: " + str(self.age) + ")";
+    }
 }
 
 fn main() {
-    let h = Human("Bob", 18);
-    print(h.name);
+    let h = Human::new("name", 1);
+    print(h.add_age(1));
+    print(h.add_age(1));
+    print(h.add_age(1));
+    print(h.add_age(1));
+    print(h.add_age(1));
+    print(h.add_age(1));
+    print(h.add_age(1));
+    print(h.add_age(1));
+    print(h.add_age(1));
+    print(h.add_age(1));
+    print(h.add_age(1));
+    print(h.add_age(1));
     return;
 }

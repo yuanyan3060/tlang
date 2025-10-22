@@ -1,4 +1,4 @@
-use gc_arena::Mutation;
+use gc_arena::{Gc, Mutation};
 use value::{State, Value};
 
 pub fn builtin_print<'gc>(_: &'gc Mutation, state: &mut State, arg_cnt: u16) -> Value<'gc> {
@@ -30,6 +30,27 @@ pub fn builtin_print<'gc>(_: &'gc Mutation, state: &mut State, arg_cnt: u16) -> 
     }
     state.stack.pop();
     Value::Nil
+}
+
+pub fn builtin_str<'gc>(mc: &'gc Mutation<'gc>, state: &mut State, arg_cnt: u16) -> Value<'gc> {
+    if arg_cnt != 1 {
+        panic!("builtin_str wrong arg")
+    }
+
+    let val = match state.stack.pop() {
+        Some(Value::Nil) => "nil".to_string(),
+        Some(Value::Bool(v)) => v.to_string(),
+        Some(Value::Int(v)) => v.to_string(),
+        Some(Value::Float(v)) => v.to_string(),
+        Some(Value::String(v)) => v.to_string(),
+        Some(Value::Object(_)) => "Object".to_string(),
+        Some(Value::Fn(v)) => format!("Fn({:X})", v),
+        None => "nil".to_string(),
+    };
+
+    let val = Value::String(Gc::new(mc, val));
+    state.stack.pop();
+    val
 }
 
 pub fn builtin_timestamp<'gc>(_: &'gc Mutation, state: &mut State, arg_cnt: u16) -> Value<'gc> {

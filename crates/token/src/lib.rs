@@ -85,6 +85,8 @@ pub enum Token {
     Else,
     Break,
     Continue,
+    // ::
+    Path,
 
     /// \n
     NewLine,
@@ -140,6 +142,7 @@ impl Token {
             Token::Else => TokenKind::Else,
             Token::Break => TokenKind::Break,
             Token::Continue => TokenKind::Continue,
+            Token::Path => TokenKind::Path,
             Token::NewLine => TokenKind::NewLine,
             Token::Unknown => TokenKind::Unknown,
             Token::Eof => TokenKind::Eof,
@@ -195,6 +198,7 @@ impl fmt::Debug for Token {
             Token::Else => write!(f, "else"),
             Token::Break => write!(f, "break"),
             Token::Continue => write!(f, "continue"),
+            Token::Path => write!(f, "::"),
             Token::NewLine => write!(f, "\\n"),
             Token::Unknown => write!(f, "unknown"),
             Token::Eof => write!(f, "eof"),
@@ -308,6 +312,7 @@ pub enum TokenKind {
     Else,
     Break,
     Continue,
+    Path,
 
     /// \n
     NewLine,
@@ -363,6 +368,7 @@ impl fmt::Display for TokenKind {
             TokenKind::Else => write!(f, "else"),
             TokenKind::Break => write!(f, "break"),
             TokenKind::Continue => write!(f, "continue"),
+            TokenKind::Path => write!(f, "::"),
             TokenKind::NewLine => write!(f, "\\n"),
             TokenKind::Unknown => write!(f, "unknown"),
             TokenKind::Eof => write!(f, "eof"),

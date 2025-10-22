@@ -88,7 +88,14 @@ impl<'a> Lex<'a> {
             ']' => Token::CloseBracket,
             '.' => Token::Dot,
             ',' => Token::Comma,
-            ':' => Token::Colon,
+            ':' => {
+                if self.peek_check(":") {
+                    self.bump();
+                    Token::Path
+                } else {
+                    Token::Colon
+                }
+            }
             ';' => Token::Semicolon,
             '=' => {
                 if self.peek_check("=") {

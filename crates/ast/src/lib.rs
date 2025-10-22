@@ -121,14 +121,17 @@ pub enum Expr {
     },
     Struct {
         struct_name: String,
-        fields: Vec<FieldAssign>
+        fields: Vec<FieldAssign>,
+    },
+    Path {
+        segment: Vec<String>,
     },
 }
 
 #[derive(Debug)]
 pub struct FieldAssign {
-    pub field: String,
-    pub expr: Expr
+    pub name: String,
+    pub expr: Expr,
 }
 
 #[derive(Debug, Clone, Copy)]

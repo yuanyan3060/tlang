@@ -35,6 +35,7 @@ impl Vm {
 
         g.register_native_fn("print", builtin::builtin_print, vec![Type::Nil], Type::Nil)?;
         g.register_native_fn("timestamp", builtin::builtin_timestamp, vec![], Type::Float)?;
+        g.register_native_fn("str", builtin::builtin_str, vec![Type::Nil], Type::String)?;
         let p = g.compile(&program)?;
         #[cfg(debug_assertions)]
         println!("{:#?}", p);
@@ -175,7 +176,7 @@ impl Vm {
                         ByteCode::SetField { offset } => {
                             arena.mutate_root(|mc, state| {
                                 let val = state.stack.pop().unwrap();
-                                let target = state.stack.pop().unwrap();
+                                let target = state.stack.last_mut().unwrap();
                                 target.as_obj().unwrap().fields.borrow_mut(mc)[*offset as usize] =
                                     val;
                             });
@@ -188,7 +189,7 @@ impl Vm {
                                     (Value::Int(l), Value::Int(r)) => Value::Int(l + r),
                                     (Value::Float(l), Value::Float(r)) => Value::Float(l + r),
                                     (Value::String(l), Value::String(r)) => {
-                                        Value::String(Gc::new(mc, format!("{}{}", r, l)))
+                                        Value::String(Gc::new(mc, format!("{}{}", l, r)))
                                     }
                                     _ => unreachable!(),
                                 };

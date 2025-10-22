@@ -3,7 +3,7 @@ use std::hash::{BuildHasher, DefaultHasher, Hash, Hasher};
 use gc_arena::lock::{GcRefLock, RefLock};
 use gc_arena::{Collect, Gc, Mutation};
 
-pub type NativeFnPtr = for<'a> fn(&'a Mutation, &mut State, arg_cnt: u16) -> Value<'a>;
+pub type NativeFnPtr = for<'a> fn(&'a Mutation<'a>, &mut State, arg_cnt: u16) -> Value<'a>;
 
 #[derive(Debug, Clone, Copy, Collect)]
 #[collect(no_drop)]
