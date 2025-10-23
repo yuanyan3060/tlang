@@ -1,3 +1,4 @@
+use std::fmt::Display;
 use std::hash::{BuildHasher, DefaultHasher, Hash, Hasher};
 
 use gc_arena::lock::{GcRefLock, RefLock};
@@ -67,12 +68,12 @@ pub enum Type {
 #[derive(Debug, Clone, Copy, Collect)]
 #[collect(no_drop)]
 pub struct Object<'gc> {
-    ty: Type,
+    ty: u32,
     pub fields: GcRefLock<'gc, Vec<Value<'gc>>>,
 }
 
 impl<'gc> Object<'gc> {
-    pub fn new(mc: &'gc Mutation<'gc>, ty: Type, field_cnt: usize) -> Self {
+    pub fn new(mc: &'gc Mutation<'gc>, ty: u32, field_cnt: usize) -> Self {
         Self {
             ty,
             fields: GcRefLock::new(mc, RefLock::new(vec![Value::Nil; field_cnt])),
@@ -136,6 +137,20 @@ impl<'gc> BuildHasher for Value<'gc> {
 
     fn build_hasher(&self) -> Self::Hasher {
         DefaultHasher::default()
+    }
+}
+
+impl <'gc> Display for Value<'gc> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Value::Nil => write!(f, "nil"),
+            Value::Bool(v) => write!(f, "{}", v),
+            Value::Int(v) => write!(f, "{}", v),
+            Value::Float(v) => write!(f, "{}", v),
+            Value::String(v) => write!(f, "{}", v),
+            Value::Object(v) => write!(f, "Object({})", v.ty),
+            Value::Fn(v) => write!(f, "Fn({})", v),
+        }
     }
 }
 

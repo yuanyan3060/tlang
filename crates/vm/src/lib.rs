@@ -36,6 +36,8 @@ impl Vm {
         g.register_native_fn("print", builtin::builtin_print, vec![Type::Nil], Type::Nil)?;
         g.register_native_fn("timestamp", builtin::builtin_timestamp, vec![], Type::Float)?;
         g.register_native_fn("str", builtin::builtin_str, vec![Type::Nil], Type::String)?;
+        g.register_native_fn("str::format", builtin::builtin_str_format, vec![Type::Nil], Type::String)?;
+        
         let p = g.compile(&program)?;
         #[cfg(debug_assertions)]
         println!("{:#?}", p);
@@ -148,7 +150,7 @@ impl Vm {
                             arena.mutate_root(|mc, state| {
                                 state.stack.push(Value::Object(Gc::new(
                                     mc,
-                                    Object::new(mc, Type::Struct(*idx), *cnt as usize),
+                                    Object::new(mc, *idx, *cnt as usize),
                                 )));
                             });
                         }

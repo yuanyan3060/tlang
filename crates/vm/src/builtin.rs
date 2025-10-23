@@ -65,3 +65,61 @@ pub fn builtin_timestamp<'gc>(_: &'gc Mutation, state: &mut State, arg_cnt: u16)
         .as_secs_f64();
     Value::Float(now)
 }
+
+// 简单支持一下字符串格式化
+pub fn builtin_str_format<'gc>(
+    mc: &'gc Mutation<'gc>,
+    state: &mut State,
+    arg_cnt: u16,
+) -> Value<'gc> {
+    let mut args = Vec::new();
+    for _ in 0..arg_cnt {
+        let arg = state.stack.pop().unwrap_or(Value::Nil);
+        args.push(arg);
+    }
+
+    if args.len() == 0 {
+        return Value::String(Gc::new(mc, "".to_string()));
+    }
+
+    let fstring = args.pop().unwrap();
+    let fstring = fstring.as_str().unwrap();
+    let mut output = "".to_string();
+    let mut iter = fstring.chars().peekable();
+
+    while let Some(c) = iter.next() {
+        match c {
+            '{' => {
+                match iter.peek() {
+                    Some('{') => {
+                        iter.next();
+                        output.push('{');
+                    }
+                    Some('}') => {
+                        iter.next();
+                        match args.pop() {
+                            Some(v) => {
+                                use std::fmt::Write;
+                                _ = write!(&mut output, "{}", v);
+                            }
+                            None => output.push_str("{}"),
+                        }
+                    }
+                    _ => {
+                        output.push('{');
+                    }
+                }
+                if iter.peek() == Some(&'{') {}
+            }
+            '}' => {
+                output.push_str("}");
+                iter.next_if(|c| *c == '}');
+            }
+            _ => output.push(c),
+        }
+    }
+
+    state.stack.pop();
+
+    Value::String(Gc::new(mc, output))
+}

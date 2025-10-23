@@ -213,6 +213,12 @@ impl Generator {
         }
     }
 
+    pub fn get_func(&self, name: &str) -> Result<(usize, &FnType)> {
+        self.fn_map.get_full(name).ok_or_else(|| Error::MissFunc {
+            name: name.to_string(),
+        })
+    }
+
     pub fn get_struct_ty(&self, name: &str) -> Result<(usize, &StructType)> {
         self.struct_map
             .get_full(name)
@@ -754,6 +760,41 @@ impl Generator {
                                     return_ty
                                 }
                             },
+                            Type::Nil => {
+                                let (idx, fn_ty) = self.get_func(&format!("nil::{}", member))?;
+                                is_method = true;
+                                codes.push(ByteCode::LoadFunction { idx: idx as u32 });
+                                codes.push(ByteCode::Swap);
+                                fn_ty.return_ty.unwrap_or(Type::Nil)
+                            }
+                            Type::Bool => {
+                                let (idx, fn_ty) = self.get_func(&format!("bool::{}", member))?;
+                                is_method = true;
+                                codes.push(ByteCode::LoadFunction { idx: idx as u32 });
+                                codes.push(ByteCode::Swap);
+                                fn_ty.return_ty.unwrap_or(Type::Nil)
+                            }
+                            Type::Int => {
+                                let (idx, fn_ty) = self.get_func(&format!("int::{}", member))?;
+                                is_method = true;
+                                codes.push(ByteCode::LoadFunction { idx: idx as u32 });
+                                codes.push(ByteCode::Swap);
+                                fn_ty.return_ty.unwrap_or(Type::Nil)
+                            }
+                            Type::Float => {
+                                let (idx, fn_ty) = self.get_func(&format!("float::{}", member))?;
+                                is_method = true;
+                                codes.push(ByteCode::LoadFunction { idx: idx as u32 });
+                                codes.push(ByteCode::Swap);
+                                fn_ty.return_ty.unwrap_or(Type::Nil)
+                            }
+                            Type::String => {
+                                let (idx, fn_ty) = self.get_func(&format!("str::{}", member))?;
+                                is_method = true;
+                                codes.push(ByteCode::LoadFunction { idx: idx as u32 });
+                                codes.push(ByteCode::Swap);
+                                fn_ty.return_ty.unwrap_or(Type::Nil)
+                            }
                             _ => return Err(Error::MemberAssign),
                         }
                     }
@@ -974,6 +1015,9 @@ pub enum Error {
     MissFieldInit {
         struct_name: String,
         field_name: String,
+    },
+    MissFunc {
+        name: String,
     },
 }
 impl Display for Error {

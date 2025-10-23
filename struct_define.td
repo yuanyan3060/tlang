@@ -19,23 +19,12 @@ struct Human {
     }
 
     fn to_str(self) -> str {
-        return "Human(name: \"" + self.name + "\", age: " + str(self.age) + ")";
+        return "Human(name: \"{}\", age: {})".format(self.name, self.age);
     }
 }
 
 fn main() {
-    let h = Human::new("name", 1);
-    print(h.add_age(1));
-    print(h.add_age(1));
-    print(h.add_age(1));
-    print(h.add_age(1));
-    print(h.add_age(1));
-    print(h.add_age(1));
-    print(h.add_age(1));
-    print(h.add_age(1));
-    print(h.add_age(1));
-    print(h.add_age(1));
-    print(h.add_age(1));
-    print(h.add_age(1));
+    let h = Human::new("name", 10);
+    print(h.to_str());
     return;
 }
