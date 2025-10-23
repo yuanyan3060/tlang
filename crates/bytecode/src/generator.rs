@@ -40,7 +40,7 @@ impl Generator {
         name: &str,
         func: NativeFnPtr,
         args: Vec<Type>,
-        return_type: Type,
+        return_ty: Type,
     ) -> Result<()> {
         if self.fn_map.contains_key(name) {
             return Err(Error::DuplicateDef {
@@ -48,19 +48,12 @@ impl Generator {
             });
         }
 
-        self.fn_map.insert(
-            name,
-            FnType {
-                args: args.clone(),
-                return_ty: Some(return_type),
-                self_ty: None,
-            },
-        );
+        self.fn_map.insert(name, FnType { args, return_ty });
 
         self.functions.push(Function::Native {
             name: name.to_string(),
             func,
-            return_type: Some(return_type),
+            return_type: Some(return_ty),
         });
         Ok(())
     }
@@ -118,15 +111,11 @@ impl Generator {
                     }
 
                     let return_ty = match &fn_def.return_type {
-                        Some(ty) => Some(self.get_type(&ty.name)?),
-                        None => None,
+                        Some(ty) => self.get_type(&ty.name)?,
+                        None => Type::Nil,
                     };
 
-                    let val = FnType {
-                        args,
-                        return_ty,
-                        self_ty: None,
-                    };
+                    let val = FnType { args, return_ty };
                     self.fn_map.insert(name, val);
                 }
                 ast::Statement::StructDef(struct_def) => {
@@ -146,15 +135,11 @@ impl Generator {
                         }
 
                         let return_ty = match &fn_def.return_type {
-                            Some(ty) => Some(self.get_type(&ty.name)?),
-                            None => None,
+                            Some(ty) => self.get_type(&ty.name)?,
+                            None => Type::Nil,
                         };
 
-                        let val = FnType {
-                            args,
-                            return_ty,
-                            self_ty: None,
-                        };
+                        let val = FnType { args, return_ty };
                         let name = format!("{}::{}", struct_def.name, name);
                         self.fn_map.insert(&name, val);
                     }
@@ -167,22 +152,18 @@ impl Generator {
                             });
                         }
 
-                        let mut args = Vec::new();
+                        let mut args = vec![self_ty];
                         for i in &fn_def.args {
                             let arg = self.get_type(&i.type_.name)?;
                             args.push(arg);
                         }
 
                         let return_ty = match &fn_def.return_type {
-                            Some(ty) => Some(self.get_type(&ty.name)?),
-                            None => None,
+                            Some(ty) => self.get_type(&ty.name)?,
+                            None => Type::Nil,
                         };
 
-                        let val = FnType {
-                            args,
-                            return_ty,
-                            self_ty: Some(self_ty),
-                        };
+                        let val = FnType { args, return_ty };
                         let name = format!("{}::{}", struct_def.name, name);
                         self.fn_map.insert(&name, val);
                     }
@@ -238,13 +219,12 @@ impl Generator {
             }
         }
 
-        if let Some((idx, f)) = self
-            .fn_map
-            .get_full(&format!("{}::{}", struct_def.name, member))
-        {
+        let method_name = format!("{}::{}", struct_def.name, member);
+
+        if let Some((idx, f)) = self.fn_map.get_full(&method_name) {
             return Ok(Member::Method {
                 idx,
-                return_ty: f.return_ty.unwrap_or(Type::Nil),
+                return_ty: f.return_ty,
             });
         };
         Err(Error::MissStructField {
@@ -572,8 +552,8 @@ impl Generator {
                     name: name.to_string(),
                 })
             }
-            ast::Expr::Path { segment } => {
-                let name = segment.join("::");
+            ast::Expr::Path { segments } => {
+                let name = segments.join("::");
                 // 先找局部变量
                 if let Some(var) = local_vars.get(name.as_str()) {
                     codes.push(ByteCode::Load { idx: var.idx });
@@ -765,35 +745,35 @@ impl Generator {
                                 is_method = true;
                                 codes.push(ByteCode::LoadFunction { idx: idx as u32 });
                                 codes.push(ByteCode::Swap);
-                                fn_ty.return_ty.unwrap_or(Type::Nil)
+                                fn_ty.return_ty
                             }
                             Type::Bool => {
                                 let (idx, fn_ty) = self.get_func(&format!("bool::{}", member))?;
                                 is_method = true;
                                 codes.push(ByteCode::LoadFunction { idx: idx as u32 });
                                 codes.push(ByteCode::Swap);
-                                fn_ty.return_ty.unwrap_or(Type::Nil)
+                                fn_ty.return_ty
                             }
                             Type::Int => {
                                 let (idx, fn_ty) = self.get_func(&format!("int::{}", member))?;
                                 is_method = true;
                                 codes.push(ByteCode::LoadFunction { idx: idx as u32 });
                                 codes.push(ByteCode::Swap);
-                                fn_ty.return_ty.unwrap_or(Type::Nil)
+                                fn_ty.return_ty
                             }
                             Type::Float => {
                                 let (idx, fn_ty) = self.get_func(&format!("float::{}", member))?;
                                 is_method = true;
                                 codes.push(ByteCode::LoadFunction { idx: idx as u32 });
                                 codes.push(ByteCode::Swap);
-                                fn_ty.return_ty.unwrap_or(Type::Nil)
+                                fn_ty.return_ty
                             }
                             Type::String => {
                                 let (idx, fn_ty) = self.get_func(&format!("str::{}", member))?;
                                 is_method = true;
                                 codes.push(ByteCode::LoadFunction { idx: idx as u32 });
                                 codes.push(ByteCode::Swap);
-                                fn_ty.return_ty.unwrap_or(Type::Nil)
+                                fn_ty.return_ty
                             }
                             _ => return Err(Error::MemberAssign),
                         }
@@ -812,7 +792,7 @@ impl Generator {
                             }
                             Type::Func(idx) => {
                                 let f = self.fn_map.get(idx as usize).unwrap();
-                                f.return_ty.unwrap_or(Type::Nil)
+                                f.return_ty
                             }
                         }
                     }
@@ -914,8 +894,7 @@ pub struct Field {
 
 pub struct FnType {
     pub args: Vec<Type>,
-    pub return_ty: Option<Type>,
-    pub self_ty: Option<Type>,
+    pub return_ty: Type,
 }
 
 #[derive(Debug)]

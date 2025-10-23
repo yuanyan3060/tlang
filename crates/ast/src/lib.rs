@@ -20,11 +20,6 @@ pub struct StructDef {
 }
 
 #[derive(Debug)]
-pub struct Type {
-    pub name: String,
-}
-
-#[derive(Debug)]
 pub struct Field {
     pub name: String,
     pub type_: Type,
@@ -94,9 +89,7 @@ pub struct WhileStmt {
 
 #[derive(Debug)]
 pub enum Expr {
-    Ident(String),
     Literal(Literal),
-
     Unary {
         op: UnaryOp,
         expr: Box<Expr>,
@@ -120,12 +113,23 @@ pub enum Expr {
         member: String,
     },
     Struct {
-        struct_name: String,
+        struct_ty: Type,
         fields: Vec<FieldAssign>,
     },
     Path {
-        segment: Vec<String>,
+        segments: Vec<PathSegment>,
     },
+}
+
+#[derive(Debug)]
+pub struct Type {
+    pub segments: Vec<PathSegment>,
+}
+
+#[derive(Debug)]
+pub struct PathSegment {
+    pub ident: String,
+    pub args: Vec<Type>,
 }
 
 #[derive(Debug)]

@@ -37,7 +37,10 @@ pub enum Token {
     /// <=
     LessEqual,
     /// >
-    Greater,
+    Greater {
+        // 右边是不是 >
+        next_is_greater: bool
+    },
     /// >=
     GreaterEqual,
 
@@ -58,8 +61,6 @@ pub enum Token {
     BitNot,
     /// <<
     ShiftLeft,
-    /// >>
-    ShiftRight,
 
     /// +
     Plus,
@@ -114,7 +115,7 @@ impl Token {
             Token::NotEqual => TokenKind::NotEqual,
             Token::Less => TokenKind::Less,
             Token::LessEqual => TokenKind::LessEqual,
-            Token::Greater => TokenKind::Greater,
+            Token::Greater {..} => TokenKind::Greater,
             Token::GreaterEqual => TokenKind::GreaterEqual,
             Token::And => TokenKind::And,
             Token::Or => TokenKind::Or,
@@ -124,7 +125,6 @@ impl Token {
             Token::BitXor => TokenKind::BitXor,
             Token::BitNot => TokenKind::BitNot,
             Token::ShiftLeft => TokenKind::ShiftLeft,
-            Token::ShiftRight => TokenKind::ShiftRight,
             Token::Plus => TokenKind::Plus,
             Token::Minus => TokenKind::Minus,
             Token::Star => TokenKind::Star,
@@ -170,7 +170,7 @@ impl fmt::Debug for Token {
             Token::NotEqual => write!(f, "!="),
             Token::Less => write!(f, "<"),
             Token::LessEqual => write!(f, "<="),
-            Token::Greater => write!(f, ">"),
+            Token::Greater {..} => write!(f, ">"),
             Token::GreaterEqual => write!(f, ">="),
             Token::And => write!(f, "&&"),
             Token::Or => write!(f, "||"),
@@ -180,7 +180,6 @@ impl fmt::Debug for Token {
             Token::BitXor => write!(f, "^"),
             Token::BitNot => write!(f, "~"),
             Token::ShiftLeft => write!(f, "<<"),
-            Token::ShiftRight => write!(f, ">>"),
             Token::Plus => write!(f, "+"),
             Token::Minus => write!(f, "-"),
             Token::Star => write!(f, "*"),
@@ -285,8 +284,6 @@ pub enum TokenKind {
     BitNot,
     /// <<
     ShiftLeft,
-    /// >>
-    ShiftRight,
 
     /// +
     Plus,
@@ -350,7 +347,6 @@ impl fmt::Display for TokenKind {
             TokenKind::BitXor => write!(f, "^"),
             TokenKind::BitNot => write!(f, "~"),
             TokenKind::ShiftLeft => write!(f, "<<"),
-            TokenKind::ShiftRight => write!(f, ">>"),
             TokenKind::Plus => write!(f, "+"),
             TokenKind::Minus => write!(f, "-"),
             TokenKind::Star => write!(f, "*"),

@@ -14,5 +14,3 @@ fn main() -> Result<(), Box<dyn Error>> {
     println!("{:#?}", program);
     Ok(())
 }
-
-pub struct Human {}

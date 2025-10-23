@@ -43,6 +43,14 @@ impl<'a> Parser<'a> {
             .unwrap_or(&Token::Eof)
     }
 
+    pub fn second(&self) -> &Token {
+        self.input
+            .clone()
+            .nth(1)
+            .map(|x| &x.0)
+            .unwrap_or(&Token::Eof)
+    }
+
     pub fn first_full(&self) -> (&Token, Pos) {
         if let Some((token, pos)) = self.input.clone().next() {
             (token, *pos)
@@ -189,6 +197,71 @@ impl<'a> Parser<'a> {
         })
     }
 
+    pub fn parse_ty(&mut self) -> ParseResult<ast::Type> {
+        let segments = self.parse_path_segments()?;
+        Ok(ast::Type { segments })
+    }
+
+    pub fn parse_path_segments(&mut self) -> ParseResult<Vec<ast::PathSegment>> {
+        self.skip_newline();
+        let mut segments = Vec::new();
+        let segment = self.parse_path_segment()?;
+        segments.push(segment);
+
+        loop {
+            self.skip_newline();
+            if !self.first_check(TokenKind::Path) {
+                break;
+            }
+            self.bump();
+
+            self.skip_newline();
+            if self.first_check(TokenKind::Less) {
+                segments.last_mut().unwrap().args = self.parse_type_args()?;
+            } else {
+                let segment = self.parse_path_segment()?;
+                segments.push(segment);
+            }
+        }
+
+        Ok(segments)
+    }
+
+    pub fn parse_path_segment(&mut self) -> ParseResult<ast::PathSegment> {
+        self.skip_newline();
+        let ident = self.expect_ident()?;
+        self.skip_newline();
+        let args = if self.first_check(TokenKind::Less) {
+            self.parse_type_args()?
+        } else {
+            Vec::new()
+        };
+
+        Ok(ast::PathSegment { ident, args })
+    }
+
+    pub fn parse_type_args(&mut self) -> ParseResult<Vec<ast::Type>> {
+        self.skip_newline();
+        self.expect(TokenKind::Less)?;
+        let mut args = Vec::new();
+        loop {
+            self.skip_newline();
+            if self.first_check(TokenKind::Greater) {
+                self.bump();
+                break;
+            }
+            let arg = self.parse_ty()?;
+            args.push(arg);
+            self.skip_newline();
+
+            if self.first_check(TokenKind::Comma) {
+                self.bump();
+            }
+        }
+
+        Ok(args)
+    }
+
     pub fn parse_fn(&mut self) -> ParseResult<ast::FunctionDef> {
         match self.parse_fn_and_method(false)? {
             RawFunction::Function(function) => Ok(function),
@@ -252,10 +325,10 @@ impl<'a> Parser<'a> {
                     self.expect(TokenKind::Colon)?;
 
                     self.skip_newline();
-                    let type_ = self.expect_ident()?;
+                    let type_ = self.parse_ty()?;
                     args.push(ast::Arg {
                         name: name.to_string(),
-                        type_: ast::Type { name: type_ },
+                        type_,
                     });
                     state.next_state();
                 }
@@ -295,8 +368,8 @@ impl<'a> Parser<'a> {
             (Token::Arrow, _) => {
                 self.bump();
                 self.skip_newline();
-                let ty = self.expect_ident()?;
-                return_type = Some(ast::Type { name: ty });
+                let ty = self.parse_ty()?;
+                return_type = Some(ty);
                 self.skip_newline();
                 body = self.parse_block()?;
             }
@@ -330,15 +403,21 @@ impl<'a> Parser<'a> {
     }
 
     pub fn parse_field(&mut self) -> ParseResult<ast::Field> {
+        self.skip_newline();
         let name = self.expect_ident()?;
-        self.expect(TokenKind::Colon)?;
-        let ty = self.expect_ident()?;
-        self.expect(TokenKind::NewLine)?;
 
-        Ok(ast::Field {
-            name,
-            type_: ast::Type { name: ty },
-        })
+        self.skip_newline();
+        self.expect(TokenKind::Colon)?;
+
+        self.skip_newline();
+        let type_ = self.parse_ty()?;
+
+        self.skip_newline();
+        if self.first_check(TokenKind::Comma) {
+            self.bump();
+        }
+
+        Ok(ast::Field { name, type_ })
     }
 
     pub fn parse_block(&mut self) -> ParseResult<ast::Block> {
@@ -514,7 +593,9 @@ impl<'a> Parser<'a> {
                 self.first(),
                 Token::Equal
                     | Token::NotEqual
-                    | Token::Greater
+                    | Token::Greater {
+                        next_is_greater: false
+                    }
                     | Token::GreaterEqual
                     | Token::Less
                     | Token::LessEqual
@@ -575,7 +656,7 @@ impl<'a> Parser<'a> {
 
     pub fn parse_bit_and_expr(&mut self, allow_struct: bool) -> ParseResult<ast::Expr> {
         self.skip_newline();
-        let mut curr = self.parse_add_sub_expr(allow_struct)?;
+        let mut curr = self.parse_shift_expr(allow_struct)?;
         loop {
             self.skip_newline();
             if !matches!(self.first(), Token::BitAnd) {
@@ -583,12 +664,49 @@ impl<'a> Parser<'a> {
             }
             let op = self.parse_binary_op()?;
             self.skip_newline();
-            let right = self.parse_add_sub_expr(allow_struct)?;
+            let right = self.parse_shift_expr(allow_struct)?;
             curr = ast::Expr::Binary {
                 left: Box::new(curr),
                 op,
                 right: Box::new(right),
             };
+        }
+        Ok(curr)
+    }
+
+    pub fn parse_shift_expr(&mut self, allow_struct: bool) -> ParseResult<ast::Expr> {
+        self.skip_newline();
+        let mut curr = self.parse_add_sub_expr(allow_struct)?;
+        loop {
+            self.skip_newline();
+            match self.first() {
+                Token::ShiftLeft => {
+                    let op = self.parse_binary_op()?;
+                    self.skip_newline();
+                    let right = self.parse_add_sub_expr(allow_struct)?;
+                    curr = ast::Expr::Binary {
+                        left: Box::new(curr),
+                        op,
+                        right: Box::new(right),
+                    };
+                }
+
+                Token::Greater { next_is_greater } => {
+                    if !*next_is_greater {
+                        break;
+                    }
+
+                    self.bump();
+                    self.bump();
+                    let right = self.parse_add_sub_expr(allow_struct)?;
+                    curr = ast::Expr::Binary {
+                        left: Box::new(curr),
+                        op: ast::BinaryOp::ShiftRight,
+                        right: Box::new(right),
+                    };
+                }
+                _ => break,
+            }
         }
         Ok(curr)
     }
@@ -678,9 +796,8 @@ impl<'a> Parser<'a> {
                 self.expect(TokenKind::CloseParen)?;
                 expr
             }
-            (Token::Ident(name), _) => {
-                let name = name.to_string();
-                self.bump();
+            (Token::Ident(_), _) => {
+                let segments = self.parse_path_segments()?;
                 self.skip_newline();
                 if allow_struct && self.first_check(TokenKind::OpenBrace) {
                     self.bump();
@@ -707,31 +824,11 @@ impl<'a> Parser<'a> {
                         }
                     }
                     ast::Expr::Struct {
-                        struct_name: name,
+                        struct_ty: ast::Type { segments },
                         fields,
                     }
-                } else if self.first_check(TokenKind::Path) {
-                    self.bump();
-                    let mut segment = vec![name];
-                    loop {
-                        self.skip_newline();
-                        if self.first_check(TokenKind::Ident) {
-                            segment.push(self.expect_ident()?);
-                        } else {
-                            break;
-                        }
-
-                        self.skip_newline();
-                        if self.first_check(TokenKind::Path) {
-                            self.bump();
-                        } else {
-                            break;
-                        }
-                    }
-
-                    ast::Expr::Path { segment }
                 } else {
-                    ast::Expr::Ident(name)
+                    ast::Expr::Path { segments }
                 }
             }
             (Token::Literal(literal), _) => {
@@ -741,7 +838,12 @@ impl<'a> Parser<'a> {
             }
             (Token::SelfArg, _) => {
                 self.bump();
-                ast::Expr::Ident("self".to_string())
+                ast::Expr::Path {
+                    segments: vec![ast::PathSegment {
+                        ident: "self".to_string(),
+                        args: Vec::new(),
+                    }],
+                }
             }
             (token, pos) => {
                 return Err(ParseError::Unexpected {
@@ -829,14 +931,13 @@ impl<'a> Parser<'a> {
             (Token::NotEqual, _) => Ok(ast::BinaryOp::NotEqual),
             (Token::Less, _) => Ok(ast::BinaryOp::Less),
             (Token::LessEqual, _) => Ok(ast::BinaryOp::LessEqual),
-            (Token::Greater, _) => Ok(ast::BinaryOp::Greater),
+            (Token::Greater { .. }, _) => Ok(ast::BinaryOp::Greater),
             (Token::GreaterEqual, _) => Ok(ast::BinaryOp::GreaterEqual),
 
             (Token::BitAnd, _) => Ok(ast::BinaryOp::BitAnd),
             (Token::BitOr, _) => Ok(ast::BinaryOp::BitOr),
             (Token::BitXor, _) => Ok(ast::BinaryOp::BitXor),
             (Token::ShiftLeft, _) => Ok(ast::BinaryOp::ShiftLeft),
-            (Token::ShiftRight, _) => Ok(ast::BinaryOp::ShiftRight),
             (Token::Plus, _) => Ok(ast::BinaryOp::Add),
             (Token::Minus, _) => Ok(ast::BinaryOp::Subtract),
             (Token::Star, _) => Ok(ast::BinaryOp::Multiply),

@@ -125,14 +125,13 @@ impl<'a> Lex<'a> {
                 }
             }
             '>' => {
-                if self.peek_check(">") {
-                    self.bump();
-                    Token::ShiftRight
-                } else if self.peek_check("=") {
+                if self.peek_check("=") {
                     self.bump();
                     Token::GreaterEqual
                 } else {
-                    Token::Greater
+                    Token::Greater {
+                        next_is_greater: self.peek_check(">")
+                    }
                 }
             }
             '~' => Token::BitNot,
