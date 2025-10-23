@@ -327,10 +327,11 @@ impl Generator {
     pub fn compile_block(
         &mut self,
         body: &ast::Block,
-        local_vars: &mut HashMap<String, LocalVar>,
+        local_vars: &mut LocalVarMap,
         codes: &mut Vec<ByteCode>,
     ) -> Result<JumpIndex> {
         let mut jumps = JumpIndex::default();
+        let mut add_locals = Vec::new();
 
         for stmt in &body.statements {
             match stmt {
@@ -342,14 +343,10 @@ impl Generator {
                     }
                     let idx = local_vars.len();
                     let ty = self.compile_expr(local_vars, &let_stmt.expr, codes)?;
-                    local_vars.insert(
-                        let_stmt.var_name.to_string(),
-                        LocalVar {
-                            idx: idx as u32,
-                            ty,
-                        },
-                    );
+                    local_vars.insert(&let_stmt.var_name, ty);
                     codes.push(ByteCode::Store { idx: idx as u32 });
+
+                    add_locals.push(&let_stmt.var_name);
                 }
                 ast::BlockStmt::Assign(assign_stmt) => match &assign_stmt.target {
                     ast::Expr::Ident(name) => {
@@ -488,6 +485,10 @@ impl Generator {
                 }
             }
         }
+
+        for local in add_locals {
+            local_vars.remove(local);
+        }
         Ok(jumps)
     }
 
@@ -499,23 +500,15 @@ impl Generator {
         self_type: Option<Type>,
         return_type: Option<Type>,
     ) -> Result<Function> {
-        let mut local_vars = HashMap::new();
+        let mut local_vars = LocalVarMap::new();
 
         if let Some(ty) = self_type {
-            let idx = local_vars.len();
-            local_vars.insert(
-                "self".to_string(),
-                LocalVar {
-                    idx: idx as u32,
-                    ty,
-                },
-            );
+            local_vars.insert("self", ty);
         }
 
         for arg in args {
-            let idx = local_vars.len() as u32;
             let ty = self.get_type(&arg.type_.name)?;
-            local_vars.insert(arg.name.to_string(), LocalVar { idx, ty });
+            local_vars.insert(&arg.name, ty);
         }
 
         let mut codes = Vec::new();
@@ -539,14 +532,14 @@ impl Generator {
         Ok(Function::Custom {
             name: name.to_string(),
             codes,
-            local_var_cnt: local_vars.len() as u32,
+            local_var_cnt: local_vars.max_cnt,
             return_type,
         })
     }
 
     pub fn compile_expr(
         &mut self,
-        local_vars: &HashMap<String, LocalVar>,
+        local_vars: &LocalVarMap,
         expr: &ast::Expr,
         codes: &mut Vec<ByteCode>,
     ) -> Result<Type> {
@@ -990,6 +983,54 @@ pub type Result<T> = std::result::Result<T, Error>;
 pub struct LocalVar {
     pub idx: u32,
     pub ty: Type,
+}
+
+pub struct LocalVarMap {
+    max_cnt: u32,
+    map: HashMap<String, LocalVar>,
+}
+
+impl Default for LocalVarMap {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl LocalVarMap {
+    pub fn new() -> Self {
+        Self {
+            max_cnt: 0,
+            map: HashMap::new(),
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        self.map.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.map.is_empty()
+    }
+
+    pub fn remove(&mut self, name: &str) -> Option<LocalVar> {
+        self.map.remove(name)
+    }
+
+    pub fn contains_key(&self, name: &str) -> bool {
+        self.map.contains_key(name)
+    }
+
+    pub fn insert(&mut self, name: &str, ty: Type) -> bool {
+        let idx = self.map.len() as u32;
+        self.max_cnt = self.max_cnt.max(idx + 1);
+        self.map
+            .insert(name.to_string(), LocalVar { idx, ty })
+            .is_some()
+    }
+
+    pub fn get(&self, name: &str) -> Option<&LocalVar> {
+        self.map.get(name)
+    }
 }
 
 #[derive(Clone, Debug)]
