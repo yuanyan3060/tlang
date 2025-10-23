@@ -341,12 +341,17 @@ impl Generator {
                             name: let_stmt.var_name.to_string(),
                         });
                     }
-                    let idx = local_vars.len();
-                    let ty = self.compile_expr(local_vars, &let_stmt.expr, codes)?;
-                    local_vars.insert(&let_stmt.var_name, ty);
-                    codes.push(ByteCode::Store { idx: idx as u32 });
 
-                    add_locals.push(&let_stmt.var_name);
+                    let ty = self.compile_expr(local_vars, &let_stmt.expr, codes)?;
+
+                    if let_stmt.var_name == "_" {
+                        codes.push(ByteCode::Pop);
+                    } else {
+                        let idx = local_vars.len();
+                        local_vars.insert(&let_stmt.var_name, ty);
+                        add_locals.push(&let_stmt.var_name);
+                        codes.push(ByteCode::Store { idx: idx as u32 });
+                    }
                 }
                 ast::BlockStmt::Assign(assign_stmt) => match &assign_stmt.target {
                     ast::Expr::Ident(name) => {

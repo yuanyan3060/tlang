@@ -221,7 +221,7 @@ impl<'a> Lex<'a> {
                 self.pos.line += 1;
                 Token::NewLine
             }
-            c if c.is_xid_start() => {
+            c if c.is_xid_start() || c == '_' => {
                 let mut ident = c.to_string();
                 while self.first().is_xid_continue() {
                     ident.push(self.bump().unwrap());
