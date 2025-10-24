@@ -228,46 +228,42 @@ impl<'a> Parser<'a> {
     }
 
     pub fn parse_ty(&mut self) -> ParseResult<ast::Type> {
-        let segments = self.parse_path_segments()?;
+        let segments = self.parse_path_segments(false)?;
         Ok(ast::Type { segments })
     }
 
-    pub fn parse_path_segments(&mut self) -> ParseResult<Vec<ast::PathSegment>> {
+    pub fn parse_path_segments(&mut self, expr: bool) -> ParseResult<Vec<ast::PathSegment>> {
         self.skip_newline();
         let mut segments = Vec::new();
-        let segment = self.parse_path_segment()?;
+        let segment = ast::PathSegment {
+            ident: self.expect_ident()?,
+            args: Vec::new(),
+        };
         segments.push(segment);
 
         loop {
             self.skip_newline();
-            if !self.first_check(TokenKind::Path) {
+            if self.first_check(TokenKind::Path) {
+                self.bump();
+            } else if expr {
                 break;
             }
-            self.bump();
 
             self.skip_newline();
             if self.first_check(TokenKind::Less) {
                 segments.last_mut().unwrap().args = self.parse_type_args()?;
-            } else {
-                let segment = self.parse_path_segment()?;
+            } else if self.first_check(TokenKind::Ident) {
+                let segment = ast::PathSegment {
+                    ident: self.expect_ident()?,
+                    args: Vec::new(),
+                };
                 segments.push(segment);
+            } else {
+                break;
             }
         }
 
         Ok(segments)
-    }
-
-    pub fn parse_path_segment(&mut self) -> ParseResult<ast::PathSegment> {
-        self.skip_newline();
-        let ident = self.expect_ident()?;
-        self.skip_newline();
-        let args = if self.first_check(TokenKind::Less) {
-            self.parse_type_args()?
-        } else {
-            Vec::new()
-        };
-
-        Ok(ast::PathSegment { ident, args })
     }
 
     pub fn parse_type_args(&mut self) -> ParseResult<Vec<ast::Type>> {
@@ -816,7 +812,7 @@ impl<'a> Parser<'a> {
                 expr
             }
             (Token::Ident(_), _) => {
-                let segments = self.parse_path_segments()?;
+                let segments = self.parse_path_segments(true)?;
                 self.skip_newline();
                 if allow_struct && self.first_check(TokenKind::OpenBrace) {
                     self.bump();
@@ -883,6 +879,12 @@ impl<'a> Parser<'a> {
                         args,
                     }
                 }
+                (Token::OpenBracket, _) => {
+                    expr = ast::Expr::Index {
+                        target: Box::new(expr),
+                        index: Box::new(self.parse_index()?),
+                    }
+                }
                 _ => break,
             }
         }
@@ -933,6 +935,18 @@ impl<'a> Parser<'a> {
             }
         }
         Ok(args)
+    }
+
+    pub fn parse_index(&mut self) -> ParseResult<ast::Expr> {
+        self.skip_newline();
+        self.expect(TokenKind::OpenBracket)?;
+
+        self.skip_newline();
+        let expr = self.parse_expr(true)?;
+
+        self.skip_newline();
+        self.expect(TokenKind::CloseBracket)?;
+        Ok(expr)
     }
 
     pub fn parse_binary_op(&mut self) -> ParseResult<ast::BinaryOp> {

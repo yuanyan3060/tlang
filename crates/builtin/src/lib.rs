@@ -1,7 +1,7 @@
 use gc_arena::Gc;
 use value::{Context, NativeFn, Object, Value};
 
-pub fn builtin_print<'gc>(ctx: Context, arg_cnt: u16) {
+pub fn builtin_print(ctx: Context, arg_cnt: u16) {
     if ctx.state.stack.len() < arg_cnt as usize + 1 {
         panic!("builtin_print wrong arg")
     }
@@ -23,7 +23,7 @@ pub fn builtin_print<'gc>(ctx: Context, arg_cnt: u16) {
     ctx.state.stack.push(Value::Nil);
 }
 
-pub fn builtin_str<'gc>(ctx: Context<'gc>, arg_cnt: u16) {
+pub fn builtin_str(ctx: Context, arg_cnt: u16) {
     if arg_cnt != 1 {
         panic!("builtin_str wrong arg")
     }
@@ -38,7 +38,7 @@ pub fn builtin_str<'gc>(ctx: Context<'gc>, arg_cnt: u16) {
     ctx.state.stack.push(val);
 }
 
-pub fn builtin_timestamp<'gc>(ctx: Context<'gc>, arg_cnt: u16) {
+pub fn builtin_timestamp(ctx: Context, arg_cnt: u16) {
     for _ in 0..arg_cnt {
         ctx.state.stack.pop();
     }
@@ -52,7 +52,7 @@ pub fn builtin_timestamp<'gc>(ctx: Context<'gc>, arg_cnt: u16) {
 }
 
 // 简单支持一下字符串格式化
-pub fn builtin_str_format<'gc>(ctx: Context<'gc>, arg_cnt: u16) {
+pub fn builtin_str_format(ctx: Context, arg_cnt: u16) {
     let mut args = Vec::new();
     for _ in 0..arg_cnt {
         let arg = ctx.state.stack.pop().unwrap_or(Value::Nil);
@@ -109,7 +109,7 @@ pub fn builtin_str_format<'gc>(ctx: Context<'gc>, arg_cnt: u16) {
     ctx.state.stack.push(Value::String(Gc::new(ctx.mc, output)));
 }
 
-pub fn builtin_vec_new<'gc>(ty: u32) -> NativeFn {
+pub fn builtin_vec_new(ty: u32) -> NativeFn {
     Box::new(move |ctx, _| {
         ctx.state.stack.pop();
         ctx.state
@@ -118,7 +118,7 @@ pub fn builtin_vec_new<'gc>(ty: u32) -> NativeFn {
     })
 }
 
-pub fn builtin_vec_len<'gc>() -> NativeFn {
+pub fn builtin_vec_len() -> NativeFn {
     Box::new(move |ctx, _| {
         let vec = ctx.state.stack.pop();
         ctx.state.stack.pop();
@@ -131,7 +131,7 @@ pub fn builtin_vec_len<'gc>() -> NativeFn {
     })
 }
 
-pub fn builtin_vec_push<'gc>(ctx: Context<'gc>, _: u16) {
+pub fn builtin_vec_push(ctx: Context, _: u16) {
     let e = ctx.state.stack.pop().unwrap_or(Value::Nil);
     let vec = ctx.state.stack.pop();
 

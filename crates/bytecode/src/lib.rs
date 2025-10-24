@@ -42,6 +42,7 @@ pub enum ByteCode {
     BitNot,
 
     GetIndex,
+    SetIndex,
     Call { arg_cnt: u16 },
     // 把栈顶两个元素交换
     Swap,

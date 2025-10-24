@@ -432,7 +432,32 @@ impl Vm {
                                 }
                             });
                         }
-                        ByteCode::GetIndex => todo!(),
+                        ByteCode::GetIndex => {
+                            arena.mutate_root(|_, state| {
+                                let idx = state.stack.pop().unwrap();
+                                let vec = state.stack.pop().unwrap();
+                                let val = match (vec, idx) {
+                                    (Value::Vec(vec), Value::Int(idx)) => {
+                                        vec.fields.borrow()[idx as usize]
+                                    }
+                                    _ => unreachable!(),
+                                };
+                                state.stack.push(val);
+                            });
+                        }
+                        ByteCode::SetIndex => {
+                            arena.mutate_root(|mc, state| {
+                                let val = state.stack.pop().unwrap();
+                                let idx = state.stack.pop().unwrap();
+                                let vec = state.stack.pop().unwrap();
+                                match (vec, idx) {
+                                    (Value::Vec(vec), Value::Int(idx)) => {
+                                        vec.fields.borrow_mut(mc)[idx as usize] = val;
+                                    }
+                                    _ => unreachable!(),
+                                };
+                            });
+                        }
                         ByteCode::Call { arg_cnt } => {
                             let mut need_gc = false;
                             let f = arena.mutate_root(|_, state| {

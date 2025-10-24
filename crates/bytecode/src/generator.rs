@@ -10,6 +10,7 @@ pub struct Generator {
     pub struct_map: Map<StructType>,
     pub fn_map: Map<FnType>,
     pub functions: Vec<Function>,
+    pub vec_element_map: HashMap<Type, Type>,
 }
 
 impl Default for Generator {
@@ -25,6 +26,7 @@ impl Generator {
             struct_map: Map::new(),
             fn_map: Map::new(),
             functions: Vec::new(),
+            vec_element_map: HashMap::new(),
         }
     }
 
@@ -140,7 +142,7 @@ impl Generator {
                 }
                 ast::Expr::Struct { .. } => {}
                 ast::Expr::Path { segments } => {
-                    collect_segs(tys, &segments);
+                    collect_segs(tys, segments);
                 }
             }
         }
@@ -168,7 +170,7 @@ impl Generator {
                     }
                     ast::BlockStmt::If(if_stmt) => {
                         collect_expr(tys, &if_stmt.condition);
-                        collect_block(tys, &*if_stmt.then_branch);
+                        collect_block(tys, &if_stmt.then_branch);
 
                         if let Some(block) = &if_stmt.else_branch {
                             collect_block(tys, block);
@@ -228,13 +230,16 @@ impl Generator {
 
     pub fn monomorphize(&mut self, program: &ast::Program) -> Result<()> {
         let tys = self.list_generic_inst(program)?;
+        let mut vecs = Vec::new();
         for ty in tys {
             if ty.segments.is_empty() {
                 continue;
             }
 
-            let name = &ty.segments[0].ident;
-            if name == "Vec" {
+            let first = &ty.segments[0];
+            let name = &first.ident;
+            if name == "Vec" && first.args.len() == 1 {
+                let element_ty = first.args[0].clone();
                 let name = self.segs_to_string(&ty.segments)?;
 
                 let ty_id = self.struct_map.insert(
@@ -245,38 +250,46 @@ impl Generator {
                     },
                 );
 
-                let mut add_method =
-                    |f_name: &str, func: NativeFn, args: Vec<Type>, return_ty: Type| {
-                        let mut f = ty.segments.clone();
-                        f.push(ast::PathSegment {
-                            ident: f_name.to_string(),
-                            args: vec![],
-                        });
-                        let f = self.segs_to_string(&f)?;
-                        self.register_native_fn(&f, func, args, return_ty)
-                    };
-
-                add_method(
-                    "new",
-                    Box::new(builtin::builtin_vec_new(ty_id as u32)),
-                    vec![],
-                    Type::Struct(ty_id as u32),
-                )?;
-
-                add_method(
-                    "push",
-                    Box::new(builtin::builtin_vec_push),
-                    vec![Type::Struct(ty_id as u32), Type::Nil],
-                    Type::Nil,
-                )?;
-
-                add_method(
-                    "len",
-                    builtin::builtin_vec_len(),
-                    vec![Type::Struct(ty_id as u32)],
-                    Type::Int,
-                )?;
+                vecs.push((ty_id, ty.segments, element_ty));
             }
+        }
+
+        for (id, segs, element) in vecs {
+            let element = self.get_type(&element)?;
+            self.vec_element_map
+                .insert(Type::Struct(id as u32), element);
+
+            let mut add_method =
+                |f_name: &str, func: NativeFn, args: Vec<Type>, return_ty: Type| {
+                    let mut f = segs.clone();
+                    f.push(ast::PathSegment {
+                        ident: f_name.to_string(),
+                        args: vec![],
+                    });
+                    let f = self.segs_to_string(&f)?;
+                    self.register_native_fn(&f, func, args, return_ty)
+                };
+
+            add_method(
+                "new",
+                Box::new(builtin::builtin_vec_new(id as u32)),
+                vec![],
+                Type::Struct(id as u32),
+            )?;
+
+            add_method(
+                "push",
+                Box::new(builtin::builtin_vec_push),
+                vec![Type::Struct(id as u32), element],
+                Type::Nil,
+            )?;
+
+            add_method(
+                "len",
+                builtin::builtin_vec_len(),
+                vec![Type::Struct(id as u32)],
+                Type::Int,
+            )?;
         }
 
         Ok(())
@@ -543,7 +556,22 @@ impl Generator {
                         self.compile_expr(local_vars, &assign_stmt.expr, codes)?;
                         codes.push(ByteCode::Store { idx: var.idx });
                     }
-                    ast::Expr::Index { .. } => todo!(),
+                    ast::Expr::Index { target, index } => {
+                        let target = self.compile_expr(local_vars, target, codes)?;
+                        let idx = self.compile_expr(local_vars, index, codes)?;
+                        let val = self.compile_expr(local_vars, &assign_stmt.expr, codes)?;
+
+                        codes.push(ByteCode::SetIndex);
+
+                        match self.vec_element_map.get(&target) {
+                            Some(v) => {
+                                if idx != Type::Int || *v != val {
+                                    return Err(Error::IndexTypeMismatch);
+                                }
+                            }
+                            None => return Err(Error::IndexTypeMismatch),
+                        }
+                    }
                     ast::Expr::Member { target, member } => {
                         let target_ty = self.compile_expr(local_vars, target, codes)?;
                         match target_ty {
@@ -980,10 +1008,20 @@ impl Generator {
                 Ok(return_type)
             }
             ast::Expr::Index { target, index } => {
-                self.compile_expr(local_vars, target, codes)?;
-                self.compile_expr(local_vars, index, codes)?;
+                let target = self.compile_expr(local_vars, target, codes)?;
+                let idx = self.compile_expr(local_vars, index, codes)?;
                 codes.push(ByteCode::GetIndex);
-                todo!()
+
+                match self.vec_element_map.get(&target) {
+                    Some(ty) => {
+                        if idx == Type::Int {
+                            Ok(*ty)
+                        } else {
+                            Err(Error::IndexTypeMismatch)
+                        }
+                    }
+                    None => Err(Error::IndexTypeMismatch),
+                }
             }
             ast::Expr::Member { target, member } => {
                 let target_ty = self.compile_expr(local_vars, target, codes)?;
@@ -1226,6 +1264,7 @@ pub enum Error {
         name: String,
     },
     EmptyTypeSegments,
+    IndexTypeMismatch,
 }
 impl Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
