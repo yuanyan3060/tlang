@@ -9,14 +9,25 @@ pub struct Program {
 pub enum Statement {
     StructDef(StructDef),
     FunctionDef(FunctionDef),
+    Impl(Impl),
+}
+
+#[derive(Debug)]
+pub struct Impl {
+    pub ty: Type,
+    pub associated_functions: Vec<AssociatedFunction>,
+}
+
+#[derive(Debug)]
+pub enum AssociatedFunction {
+    Function(FunctionDef),
+    Method(FunctionDef),
 }
 
 #[derive(Debug)]
 pub struct StructDef {
     pub name: String,
     pub fields: Vec<Field>,
-    pub functions: Vec<FunctionDef>,
-    pub methods: Vec<FunctionDef>,
 }
 
 #[derive(Debug)]

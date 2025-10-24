@@ -78,7 +78,7 @@ pub fn builtin_str_format<'gc>(
         args.push(arg);
     }
 
-    if args.len() == 0 {
+    if args.is_empty() {
         return Value::String(Gc::new(mc, "".to_string()));
     }
 
@@ -112,7 +112,7 @@ pub fn builtin_str_format<'gc>(
                 if iter.peek() == Some(&'{') {}
             }
             '}' => {
-                output.push_str("}");
+                output.push('}');
                 iter.next_if(|c| *c == '}');
             }
             _ => output.push(c),

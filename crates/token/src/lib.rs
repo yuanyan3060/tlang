@@ -39,7 +39,7 @@ pub enum Token {
     /// >
     Greater {
         // 右边是不是 >
-        next_is_greater: bool
+        next_is_greater: bool,
     },
     /// >=
     GreaterEqual,
@@ -80,7 +80,6 @@ pub enum Token {
     Fn,
     Struct,
     Return,
-    SelfArg,
     If,
     While,
     Else,
@@ -88,6 +87,7 @@ pub enum Token {
     Continue,
     // ::
     Path,
+    Impl,
 
     /// \n
     NewLine,
@@ -115,7 +115,7 @@ impl Token {
             Token::NotEqual => TokenKind::NotEqual,
             Token::Less => TokenKind::Less,
             Token::LessEqual => TokenKind::LessEqual,
-            Token::Greater {..} => TokenKind::Greater,
+            Token::Greater { .. } => TokenKind::Greater,
             Token::GreaterEqual => TokenKind::GreaterEqual,
             Token::And => TokenKind::And,
             Token::Or => TokenKind::Or,
@@ -136,13 +136,13 @@ impl Token {
             Token::Fn => TokenKind::Fn,
             Token::Struct => TokenKind::Struct,
             Token::Return => TokenKind::Return,
-            Token::SelfArg => TokenKind::SelfArg,
             Token::If => TokenKind::If,
             Token::While => TokenKind::While,
             Token::Else => TokenKind::Else,
             Token::Break => TokenKind::Break,
             Token::Continue => TokenKind::Continue,
             Token::Path => TokenKind::Path,
+            Token::Impl => TokenKind::Impl,
             Token::NewLine => TokenKind::NewLine,
             Token::Unknown => TokenKind::Unknown,
             Token::Eof => TokenKind::Eof,
@@ -170,7 +170,7 @@ impl fmt::Debug for Token {
             Token::NotEqual => write!(f, "!="),
             Token::Less => write!(f, "<"),
             Token::LessEqual => write!(f, "<="),
-            Token::Greater {..} => write!(f, ">"),
+            Token::Greater { .. } => write!(f, ">"),
             Token::GreaterEqual => write!(f, ">="),
             Token::And => write!(f, "&&"),
             Token::Or => write!(f, "||"),
@@ -191,13 +191,13 @@ impl fmt::Debug for Token {
             Token::Fn => write!(f, "fn"),
             Token::Struct => write!(f, "struct"),
             Token::Return => write!(f, "return"),
-            Token::SelfArg => write!(f, "self"),
             Token::If => write!(f, "if"),
             Token::While => write!(f, "while"),
             Token::Else => write!(f, "else"),
             Token::Break => write!(f, "break"),
             Token::Continue => write!(f, "continue"),
             Token::Path => write!(f, "::"),
+            Token::Impl => write!(f, "impl"),
             Token::NewLine => write!(f, "\\n"),
             Token::Unknown => write!(f, "unknown"),
             Token::Eof => write!(f, "eof"),
@@ -310,6 +310,7 @@ pub enum TokenKind {
     Break,
     Continue,
     Path,
+    Impl,
 
     /// \n
     NewLine,
@@ -365,6 +366,7 @@ impl fmt::Display for TokenKind {
             TokenKind::Break => write!(f, "break"),
             TokenKind::Continue => write!(f, "continue"),
             TokenKind::Path => write!(f, "::"),
+            TokenKind::Impl => write!(f, "impl"),
             TokenKind::NewLine => write!(f, "\\n"),
             TokenKind::Unknown => write!(f, "unknown"),
             TokenKind::Eof => write!(f, "eof"),

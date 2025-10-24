@@ -58,6 +58,45 @@ impl Generator {
         Ok(())
     }
 
+    pub fn segs_to_string(&self, segs: &[ast::PathSegment]) -> Result<String> {
+        fn write(segs: &[ast::PathSegment], text: &mut String) -> Result<()> {
+            if segs.is_empty() {
+                return Err(Error::EmptyTypeSegments);
+            }
+
+            let size = segs.len();
+
+            for (i, seg) in segs.iter().enumerate() {
+                let last = i == size - 1;
+
+                text.push_str(&seg.ident);
+                if !seg.args.is_empty() {
+                    text.push_str("::<");
+                }
+                for arg in &seg.args {
+                    write(&arg.segments, text)?;
+                }
+
+                if !seg.args.is_empty() {
+                    text.push('>');
+                }
+
+                if !last {
+                    text.push_str("::");
+                }
+            }
+            Ok(())
+        }
+
+        let mut text = "".to_string();
+        write(segs, &mut text)?;
+        Ok(text)
+    }
+
+    pub fn ty_to_string(&self, ty: &ast::Type) -> Result<String> {
+        self.segs_to_string(&ty.segments)
+    }
+
     pub fn build_struct_map(&mut self, program: &ast::Program) -> Result<()> {
         for stmt in &program.statements {
             if let ast::Statement::StructDef(struct_def) = stmt {
@@ -78,7 +117,7 @@ impl Generator {
                 let name = &struct_def.name;
                 let mut fields = Map::new();
                 for f in &struct_def.fields {
-                    let ty = self.get_type(&f.type_.name)?;
+                    let ty = self.get_type(&f.type_)?;
                     fields.insert(
                         &f.name,
                         Field {
@@ -106,89 +145,68 @@ impl Generator {
 
                     let mut args = Vec::new();
                     for i in &fn_def.args {
-                        let arg = self.get_type(&i.type_.name)?;
+                        let arg = self.get_type(&i.type_)?;
                         args.push(arg);
                     }
 
                     let return_ty = match &fn_def.return_type {
-                        Some(ty) => self.get_type(&ty.name)?,
+                        Some(ty) => self.get_type(ty)?,
                         None => Type::Nil,
                     };
 
                     let val = FnType { args, return_ty };
                     self.fn_map.insert(name, val);
                 }
-                ast::Statement::StructDef(struct_def) => {
-                    let self_ty = self.get_type(&struct_def.name)?;
-                    for fn_def in &struct_def.functions {
-                        let name = &fn_def.name;
-                        if self.fn_map.contains_key(name) {
-                            return Err(Error::DuplicateDef {
-                                name: name.to_string(),
-                            });
+                ast::Statement::Impl(impl_def) => {
+                    let self_ty_str = self.ty_to_string(&impl_def.ty)?;
+
+                    for fn_def in &impl_def.associated_functions {
+                        let fn_def = match fn_def {
+                            ast::AssociatedFunction::Function(function_def) => function_def,
+                            ast::AssociatedFunction::Method(function_def) => function_def,
+                        };
+
+                        let name = format!("{}::{}", self_ty_str, fn_def.name);
+                        if self.fn_map.contains_key(&name) {
+                            return Err(Error::DuplicateDef { name });
                         }
 
                         let mut args = Vec::new();
                         for i in &fn_def.args {
-                            let arg = self.get_type(&i.type_.name)?;
+                            let arg = self.get_type(&i.type_)?;
                             args.push(arg);
                         }
 
                         let return_ty = match &fn_def.return_type {
-                            Some(ty) => self.get_type(&ty.name)?,
+                            Some(ty) => self.get_type(ty)?,
                             None => Type::Nil,
                         };
 
                         let val = FnType { args, return_ty };
-                        let name = format!("{}::{}", struct_def.name, name);
-                        self.fn_map.insert(&name, val);
-                    }
-
-                    for fn_def in &struct_def.methods {
-                        let name = &fn_def.name;
-                        if self.fn_map.contains_key(name) {
-                            return Err(Error::DuplicateDef {
-                                name: name.to_string(),
-                            });
-                        }
-
-                        let mut args = vec![self_ty];
-                        for i in &fn_def.args {
-                            let arg = self.get_type(&i.type_.name)?;
-                            args.push(arg);
-                        }
-
-                        let return_ty = match &fn_def.return_type {
-                            Some(ty) => self.get_type(&ty.name)?,
-                            None => Type::Nil,
-                        };
-
-                        let val = FnType { args, return_ty };
-                        let name = format!("{}::{}", struct_def.name, name);
                         self.fn_map.insert(&name, val);
                     }
                 }
+                ast::Statement::StructDef(..) => {}
             }
         }
         Ok(())
     }
 
-    pub fn get_type(&self, name: &str) -> Result<Type> {
-        match name {
+    pub fn get_type(&self, ty: &ast::Type) -> Result<Type> {
+        let name = self.ty_to_string(ty)?;
+        match name.as_str() {
             "nil" => Ok(Type::Nil),
             "bool" => Ok(Type::Bool),
             "int" => Ok(Type::Int),
             "float" => Ok(Type::Float),
             "str" => Ok(Type::String),
             _ => {
-                if let Some(idx) = self.struct_map.get_idx(name) {
+                if let Some(idx) = self.struct_map.get_idx(&name) {
                     Ok(Type::Struct(idx as u32))
-                } else if let Some(idx) = self.fn_map.get_idx(name) {
+                } else if let Some(idx) = self.fn_map.get_idx(&name) {
                     Ok(Type::Func(idx as u32))
                 } else {
-                    Err(Error::UnknownType {
-                        name: name.to_string(),
-                    })
+                    Err(Error::UnknownType { name })
                 }
             }
         }
@@ -242,49 +260,38 @@ impl Generator {
 
         for stmt in &program.statements {
             match stmt {
-                ast::Statement::StructDef(struct_def) => {
-                    let self_ty = self.get_type(&struct_def.name)?;
-                    for function_def in &struct_def.functions {
-                        let return_ty = function_def
+                ast::Statement::Impl(impl_def) => {
+                    let self_ty = self.get_type(&impl_def.ty)?;
+                    let self_ty_str = self.ty_to_string(&impl_def.ty)?;
+
+                    for fn_def in &impl_def.associated_functions {
+                        let (is_method, fn_def) = match fn_def {
+                            ast::AssociatedFunction::Function(function_def) => {
+                                (false, function_def)
+                            }
+                            ast::AssociatedFunction::Method(function_def) => (true, function_def),
+                        };
+
+                        let return_ty = fn_def
                             .return_type
                             .as_ref()
-                            .map(|x| self.get_type(&x.name))
+                            .map(|x| self.get_type(x))
                             .transpose()?;
-                        let name = format!("{}::{}", struct_def.name, function_def.name);
-                        let f = self.compile_fn(
-                            &name,
-                            &function_def.args,
-                            &function_def.body,
-                            None,
-                            return_ty,
-                        )?;
+                        let name = format!("{}::{}", self_ty_str, fn_def.name);
 
-                        functions.push(f);
-                    }
-
-                    for function_def in &struct_def.methods {
-                        let return_ty = function_def
-                            .return_type
-                            .as_ref()
-                            .map(|x| self.get_type(&x.name))
-                            .transpose()?;
-                        let name = format!("{}::{}", struct_def.name, function_def.name);
-                        let f = self.compile_fn(
-                            &name,
-                            &function_def.args,
-                            &function_def.body,
-                            Some(self_ty),
-                            return_ty,
-                        )?;
+                        let self_ty = if is_method { Some(self_ty) } else { None };
+                        let f =
+                            self.compile_fn(&name, &fn_def.args, &fn_def.body, self_ty, return_ty)?;
 
                         functions.push(f);
                     }
                 }
+
                 ast::Statement::FunctionDef(function_def) => {
                     let return_ty = function_def
                         .return_type
                         .as_ref()
-                        .map(|x| self.get_type(&x.name))
+                        .map(|x| self.get_type(x))
                         .transpose()?;
                     let f = self.compile_fn(
                         &function_def.name,
@@ -298,6 +305,7 @@ impl Generator {
                     }
                     functions.push(f);
                 }
+                ast::Statement::StructDef(..) => {}
             }
         }
 
@@ -340,11 +348,10 @@ impl Generator {
                     }
                 }
                 ast::BlockStmt::Assign(assign_stmt) => match &assign_stmt.target {
-                    ast::Expr::Ident(name) => {
+                    ast::Expr::Path { segments } => {
+                        let name = self.segs_to_string(segments)?;
                         let Some(var) = local_vars.get(name.as_str()) else {
-                            return Err(Error::UndefinedIdent {
-                                name: name.to_string(),
-                            });
+                            return Err(Error::UndefinedIdent { name });
                         };
                         self.compile_expr(local_vars, &assign_stmt.expr, codes)?;
                         codes.push(ByteCode::Store { idx: var.idx });
@@ -390,9 +397,6 @@ impl Generator {
                         return Err(Error::CanNotAssignTo {
                             target: "struct init".to_string(),
                         });
-                    }
-                    ast::Expr::Path { .. } => {
-                        todo!()
                     }
                 },
                 ast::BlockStmt::Return(return_stmt) => {
@@ -498,7 +502,7 @@ impl Generator {
         }
 
         for arg in args {
-            let ty = self.get_type(&arg.type_.name)?;
+            let ty = self.get_type(&arg.type_)?;
             local_vars.insert(&arg.name, ty);
         }
 
@@ -535,25 +539,8 @@ impl Generator {
         codes: &mut Vec<ByteCode>,
     ) -> Result<Type> {
         match expr {
-            ast::Expr::Ident(name) => {
-                // 先找局部变量
-                if let Some(var) = local_vars.get(name.as_str()) {
-                    codes.push(ByteCode::Load { idx: var.idx });
-                    return Ok(var.ty);
-                }
-
-                // 然后找函数表
-                if let Some((idx, _)) = self.fn_map.get_full(name) {
-                    codes.push(ByteCode::LoadFunction { idx: idx as u32 });
-                    return Ok(Type::Func(idx as u32));
-                }
-
-                Err(Error::UndefinedIdent {
-                    name: name.to_string(),
-                })
-            }
             ast::Expr::Path { segments } => {
-                let name = segments.join("::");
+                let name = self.segs_to_string(segments)?;
                 // 先找局部变量
                 if let Some(var) = local_vars.get(name.as_str()) {
                     codes.push(ByteCode::Load { idx: var.idx });
@@ -826,11 +813,9 @@ impl Generator {
                     _ => Err(Error::MemberAssign),
                 }
             }
-            ast::Expr::Struct {
-                struct_name,
-                fields,
-            } => {
-                let (idx, struct_ty) = self.get_struct_ty(struct_name)?;
+            ast::Expr::Struct { struct_ty, fields } => {
+                let name = self.ty_to_string(struct_ty)?;
+                let (idx, struct_ty) = self.get_struct_ty(&name)?;
                 let mut field_map = HashMap::new();
 
                 let mut offsets = Vec::new();
@@ -839,7 +824,7 @@ impl Generator {
                         Some(offset) => offsets.push(offset),
                         None => {
                             return Err(Error::UnknownField {
-                                struct_name: struct_name.to_string(),
+                                struct_name: name,
                                 field_name: field.name.to_string(),
                             });
                         }
@@ -847,7 +832,7 @@ impl Generator {
                     let ok = field_map.insert(&field.name, &field.expr);
                     if ok.is_some() {
                         return Err(Error::DuplicateFieldInit {
-                            struct_name: struct_name.to_string(),
+                            struct_name: name,
                             field_name: field.name.to_string(),
                         });
                     }
@@ -856,7 +841,7 @@ impl Generator {
                 for field in struct_ty.fields.iter() {
                     if !field_map.contains_key(&field.name) {
                         return Err(Error::MissFieldInit {
-                            struct_name: struct_name.to_string(),
+                            struct_name: name,
                             field_name: field.name.to_string(),
                         });
                     }
@@ -998,6 +983,7 @@ pub enum Error {
     MissFunc {
         name: String,
     },
+    EmptyTypeSegments,
 }
 impl Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

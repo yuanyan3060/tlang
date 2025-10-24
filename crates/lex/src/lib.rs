@@ -130,7 +130,7 @@ impl<'a> Lex<'a> {
                     Token::GreaterEqual
                 } else {
                     Token::Greater {
-                        next_is_greater: self.peek_check(">")
+                        next_is_greater: self.peek_check(">"),
                     }
                 }
             }
@@ -230,7 +230,7 @@ impl<'a> Lex<'a> {
                     "let" => Token::Let,
                     "return" => Token::Return,
                     "struct" => Token::Struct,
-                    "self" => Token::SelfArg,
+                    "impl" => Token::Impl,
                     "nil" => Token::Literal(Literal::Nil),
                     "true" => Token::Literal(Literal::Bool(true)),
                     "false" => Token::Literal(Literal::Bool(false)),

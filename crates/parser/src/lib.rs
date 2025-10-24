@@ -131,6 +131,10 @@ impl<'a> Parser<'a> {
                         .statements
                         .push(ast::Statement::FunctionDef(function));
                 }
+                (Token::Impl, _) => {
+                    let impl_ = self.parse_impl()?;
+                    program.statements.push(ast::Statement::Impl(impl_));
+                }
                 (Token::Eof, _) => {
                     break;
                 }
@@ -147,10 +151,49 @@ impl<'a> Parser<'a> {
         Ok(program)
     }
 
+    pub fn parse_impl(&mut self) -> ParseResult<ast::Impl> {
+        self.skip_newline();
+        self.expect(TokenKind::Impl)?;
+
+        self.skip_newline();
+        let ty = self.parse_ty()?;
+        let mut associated_functions = Vec::new();
+
+        self.skip_newline();
+        self.expect(TokenKind::OpenBrace)?;
+
+        loop {
+            self.skip_newline();
+            match self.first_full() {
+                (Token::Fn, _) => match self.parse_fn_and_method(true)? {
+                    RawFunction::Function(function) => {
+                        associated_functions.push(ast::AssociatedFunction::Function(function));
+                    }
+                    RawFunction::Method(method) => {
+                        associated_functions.push(ast::AssociatedFunction::Method(method));
+                    }
+                },
+                (Token::CloseBrace, _) => {
+                    self.bump();
+                    break;
+                }
+                (token, pos) => {
+                    return Err(ParseError::Unexpected {
+                        expected: vec![TokenKind::Fn, TokenKind::CloseBrace],
+                        found: token.clone(),
+                        pos,
+                    });
+                }
+            }
+        }
+        Ok(ast::Impl {
+            ty,
+            associated_functions,
+        })
+    }
+
     pub fn parse_struct(&mut self) -> ParseResult<ast::StructDef> {
         let mut fields = Vec::new();
-        let mut methods = Vec::new();
-        let mut functions = Vec::new();
 
         self.skip_newline();
         self.expect(TokenKind::Struct)?;
@@ -164,14 +207,6 @@ impl<'a> Parser<'a> {
         loop {
             self.skip_newline();
             match self.first_full() {
-                (Token::Fn, _) => match self.parse_fn_and_method(true)? {
-                    RawFunction::Function(function) => {
-                        functions.push(function);
-                    }
-                    RawFunction::Method(method) => {
-                        methods.push(method);
-                    }
-                },
                 (Token::Ident(..), _) => {
                     let field = self.parse_field()?;
                     fields.push(field);
@@ -182,19 +217,14 @@ impl<'a> Parser<'a> {
                 }
                 (token, pos) => {
                     return Err(ParseError::Unexpected {
-                        expected: vec![TokenKind::Fn, TokenKind::Ident, TokenKind::CloseBrace],
+                        expected: vec![TokenKind::Ident, TokenKind::CloseBrace],
                         found: token.clone(),
                         pos,
                     });
                 }
             }
         }
-        Ok(ast::StructDef {
-            name,
-            fields,
-            functions,
-            methods,
-        })
+        Ok(ast::StructDef { name, fields })
     }
 
     pub fn parse_ty(&mut self) -> ParseResult<ast::Type> {
@@ -289,27 +319,6 @@ impl<'a> Parser<'a> {
         loop {
             self.skip_newline();
             match self.first_full() {
-                (Token::SelfArg, pos) => {
-                    if !state.can_be_arg() {
-                        return Err(ParseError::Unexpected {
-                            expected: state.expect(),
-                            found: Token::SelfArg,
-                            pos,
-                        });
-                    }
-
-                    if !state.can_be_self() {
-                        return Err(ParseError::SelfArgNotFirst { pos });
-                    }
-
-                    if !method_ok {
-                        return Err(ParseError::SelfArgInFunction { pos });
-                    }
-
-                    self.bump();
-                    is_method = true;
-                    state.next_state();
-                }
                 (Token::Ident(name), pos) => {
                     let name = name.to_string();
 
@@ -319,6 +328,16 @@ impl<'a> Parser<'a> {
                             found: Token::Ident(name),
                             pos,
                         });
+                    }
+
+                    if name == "self" {
+                        if !state.can_be_self() || !method_ok {
+                            return Err(ParseError::SelfArgNotFirst { pos });
+                        }
+                        self.bump();
+                        is_method = true;
+                        state.next_state();
+                        continue;
                     }
                     self.bump();
                     self.skip_newline();
@@ -835,15 +854,6 @@ impl<'a> Parser<'a> {
                 let literal = literal.clone();
                 self.bump();
                 ast::Expr::Literal(literal)
-            }
-            (Token::SelfArg, _) => {
-                self.bump();
-                ast::Expr::Path {
-                    segments: vec![ast::PathSegment {
-                        ident: "self".to_string(),
-                        args: Vec::new(),
-                    }],
-                }
             }
             (token, pos) => {
                 return Err(ParseError::Unexpected {
