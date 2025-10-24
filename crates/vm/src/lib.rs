@@ -8,9 +8,7 @@ use gc_arena::{Arena, Gc, Rootable};
 use lex::Lex;
 use parser::Parser;
 
-use value::{Object, State, Type, Value};
-
-pub mod builtin;
+use value::{Context, Object, State, Type, Value};
 
 pub struct Vm {
     arena: Arena<Rootable![State<'_>]>,
@@ -33,12 +31,27 @@ impl Vm {
         let program = parser.parse_program()?;
         let mut g = Generator::new();
 
-        g.register_native_fn("print", builtin::builtin_print, vec![Type::Nil], Type::Nil)?;
-        g.register_native_fn("timestamp", builtin::builtin_timestamp, vec![], Type::Float)?;
-        g.register_native_fn("str", builtin::builtin_str, vec![Type::Nil], Type::String)?;
+        g.register_native_fn(
+            "print",
+            Box::new(builtin::builtin_print),
+            vec![Type::Nil],
+            Type::Nil,
+        )?;
+        g.register_native_fn(
+            "timestamp",
+            Box::new(builtin::builtin_timestamp),
+            vec![],
+            Type::Float,
+        )?;
+        g.register_native_fn(
+            "str",
+            Box::new(builtin::builtin_str),
+            vec![Type::Nil],
+            Type::String,
+        )?;
         g.register_native_fn(
             "str::format",
-            builtin::builtin_str_format,
+            Box::new(builtin::builtin_str_format),
             vec![Type::Nil],
             Type::String,
         )?;
@@ -81,8 +94,8 @@ impl Vm {
     ) -> Result<(), Box<dyn Error>> {
         match f {
             Function::Native { func, .. } => arena.mutate_root(|mc, state| {
-                let val = func(mc, state, arg_cnt);
-                state.stack.push(val);
+                let ctx = Context { mc, state };
+                func(ctx, arg_cnt);
             }),
             Function::Custom {
                 codes,

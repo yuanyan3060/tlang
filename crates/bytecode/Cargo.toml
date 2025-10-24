@@ -8,3 +8,4 @@ value = { path = "../value" }
 ast = { path = "../ast" }
 token = { path = "../token" }
 gc-arena = "0.5.3"
+builtin = { path = "../builtin" }

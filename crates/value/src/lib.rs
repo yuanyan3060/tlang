@@ -1,10 +1,16 @@
-use std::fmt::Display;
+use std::collections::HashSet;
+use std::fmt::{Debug, Display};
 use std::hash::{BuildHasher, DefaultHasher, Hash, Hasher};
 
 use gc_arena::lock::{GcRefLock, RefLock};
 use gc_arena::{Collect, Gc, Mutation};
 
-pub type NativeFnPtr = for<'a> fn(&'a Mutation<'a>, &mut State, arg_cnt: u16) -> Value<'a>;
+pub type NativeFn = Box<dyn Fn(Context, u16)>;
+
+pub struct Context<'gc> {
+    pub mc: &'gc Mutation<'gc>,
+    pub state: &'gc mut State<'gc>,
+}
 
 #[derive(Debug, Clone, Copy, Collect)]
 #[collect(no_drop)]
@@ -15,6 +21,7 @@ pub enum Value<'gc> {
     Float(f64),
     String(Gc<'gc, String>),
     Object(Gc<'gc, Object<'gc>>),
+    Vec(Gc<'gc, Object<'gc>>),
     Fn(u32),
 }
 
@@ -47,6 +54,39 @@ impl<'gc> Value<'gc> {
         match self {
             Value::String(v) => Some(v),
             _ => None,
+        }
+    }
+
+    fn cycle_check_fmt(
+        &self,
+        f: &mut std::fmt::Formatter<'_>,
+        s: &mut HashSet<usize>,
+    ) -> std::fmt::Result {
+        match self {
+            Value::Nil => write!(f, "nil"),
+            Value::Bool(v) => write!(f, "{}", v),
+            Value::Int(v) => write!(f, "{}", v),
+            Value::Float(v) => write!(f, "{}", v),
+            Value::String(v) => write!(f, "{}", v),
+            Value::Vec(v) => {
+                let addr = v.as_ref() as *const _ as usize;
+                if !s.insert(addr) {
+                    return write!(f, "[..]");
+                }
+                write!(f, "[")?;
+                let field = v.fields.borrow();
+                let size = field.len();
+                for (i, v) in field.iter().enumerate() {
+                    v.cycle_check_fmt(f, s)?;
+                    if i + 1 != size {
+                        write!(f, ", ")?;
+                    }
+                }
+                s.remove(&addr);
+                write!(f, "]")
+            }
+            Value::Object(v) => write!(f, "Object({})", v.ty),
+            Value::Fn(v) => write!(f, "Fn({})", v),
         }
     }
 }
@@ -101,15 +141,22 @@ impl<'gc> Hash for Value<'gc> {
                 state.write_u8(4);
                 v.hash(state);
             }
-            Value::Object(v) => {
+            Value::Vec(v) => {
                 state.write_u8(5);
                 v.ty.hash(state);
                 for field in &*v.fields.borrow() {
                     field.hash(state);
                 }
             }
-            Value::Fn(v) => {
+            Value::Object(v) => {
                 state.write_u8(6);
+                v.ty.hash(state);
+                for field in &*v.fields.borrow() {
+                    field.hash(state);
+                }
+            }
+            Value::Fn(v) => {
+                state.write_u8(7);
                 v.hash(state);
             }
         }
@@ -142,15 +189,7 @@ impl<'gc> BuildHasher for Value<'gc> {
 
 impl<'gc> Display for Value<'gc> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Value::Nil => write!(f, "nil"),
-            Value::Bool(v) => write!(f, "{}", v),
-            Value::Int(v) => write!(f, "{}", v),
-            Value::Float(v) => write!(f, "{}", v),
-            Value::String(v) => write!(f, "{}", v),
-            Value::Object(v) => write!(f, "Object({})", v.ty),
-            Value::Fn(v) => write!(f, "Fn({})", v),
-        }
+        self.cycle_check_fmt(f, &mut HashSet::new())
     }
 }
 

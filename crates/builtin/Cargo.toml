@@ -1,0 +1,11 @@
+[package]
+name = "builtin"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+value = { path = "../value" }
+gc-arena = "0.5.3"

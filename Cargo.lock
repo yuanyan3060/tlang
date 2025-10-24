@@ -10,10 +10,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "builtin"
+version = "0.1.0"
+dependencies = [
+ "gc-arena",
+ "value",
+]
+
+[[package]]
 name = "bytecode"
 version = "0.1.0"
 dependencies = [
  "ast",
+ "builtin",
  "gc-arena",
  "token",
  "value",
@@ -143,6 +152,7 @@ dependencies = [
 name = "vm"
 version = "0.1.0"
 dependencies = [
+ "builtin",
  "bytecode",
  "gc-arena",
  "lex",

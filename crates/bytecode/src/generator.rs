@@ -1,7 +1,7 @@
 use ast::{BinaryOp, UnaryOp};
-use std::collections::HashMap;
-use std::fmt::Display;
-use value::{NativeFnPtr, Type};
+use std::collections::{HashMap, HashSet};
+use std::fmt::{Debug, Display};
+use value::{NativeFn, Type};
 
 use crate::ByteCode;
 
@@ -38,7 +38,7 @@ impl Generator {
     pub fn register_native_fn(
         &mut self,
         name: &str,
-        func: NativeFnPtr,
+        func: NativeFn,
         args: Vec<Type>,
         return_ty: Type,
     ) -> Result<()> {
@@ -97,6 +97,191 @@ impl Generator {
         self.segs_to_string(&ty.segments)
     }
 
+    pub fn list_generic_inst(&self, program: &ast::Program) -> Result<Vec<ast::Type>> {
+        fn collect_segs(tys: &mut HashSet<ast::Type>, segs: &[ast::PathSegment]) {
+            for (i, seg) in segs.iter().enumerate() {
+                if seg.args.is_empty() {
+                    continue;
+                }
+
+                let ty = ast::Type {
+                    segments: segs[..=i].to_vec(),
+                };
+
+                tys.insert(ty);
+                for ty in &seg.args {
+                    collect_segs(tys, &ty.segments);
+                }
+            }
+        }
+
+        fn collect_expr(tys: &mut HashSet<ast::Type>, expr: &ast::Expr) {
+            match expr {
+                ast::Expr::Literal(..) => {}
+                ast::Expr::Unary { expr, .. } => {
+                    collect_expr(tys, expr);
+                }
+                ast::Expr::Binary { left, op: _, right } => {
+                    collect_expr(tys, left);
+                    collect_expr(tys, right);
+                }
+                ast::Expr::Call { func, args } => {
+                    collect_expr(tys, func);
+                    for arg in args {
+                        collect_expr(tys, arg);
+                    }
+                }
+                ast::Expr::Index { target, index } => {
+                    collect_expr(tys, target);
+                    collect_expr(tys, index);
+                }
+                ast::Expr::Member { target, .. } => {
+                    collect_expr(tys, target);
+                }
+                ast::Expr::Struct { .. } => {}
+                ast::Expr::Path { segments } => {
+                    collect_segs(tys, &segments);
+                }
+            }
+        }
+
+        fn collect_block(tys: &mut HashSet<ast::Type>, block: &ast::Block) {
+            for stmt in &block.statements {
+                match stmt {
+                    ast::BlockStmt::Let(let_stmt) => {
+                        collect_expr(tys, &let_stmt.expr);
+                    }
+                    ast::BlockStmt::Assign(assign_stmt) => {
+                        collect_expr(tys, &assign_stmt.expr);
+                        collect_expr(tys, &assign_stmt.target);
+                    }
+                    ast::BlockStmt::Return(return_stmt) => {
+                        if let Some(expr) = &return_stmt.expr {
+                            collect_expr(tys, expr);
+                        }
+                    }
+                    ast::BlockStmt::Expr(expr) => {
+                        collect_expr(tys, expr);
+                    }
+                    ast::BlockStmt::Block(block) => {
+                        collect_block(tys, block);
+                    }
+                    ast::BlockStmt::If(if_stmt) => {
+                        collect_expr(tys, &if_stmt.condition);
+                        collect_block(tys, &*if_stmt.then_branch);
+
+                        if let Some(block) = &if_stmt.else_branch {
+                            collect_block(tys, block);
+                        }
+                    }
+                    ast::BlockStmt::While(while_stmt) => {
+                        collect_expr(tys, &while_stmt.condition);
+                        collect_block(tys, &while_stmt.block);
+                    }
+                    ast::BlockStmt::Break => {}
+                    ast::BlockStmt::Continue => {}
+                }
+            }
+        }
+
+        fn collect_fn(tys: &mut HashSet<ast::Type>, fn_def: &ast::FunctionDef) {
+            for arg in &fn_def.args {
+                collect_segs(tys, &arg.type_.segments);
+            }
+
+            if let Some(ty) = &fn_def.return_type {
+                collect_segs(tys, &ty.segments);
+            }
+
+            collect_block(tys, &fn_def.body);
+        }
+
+        let mut tys = HashSet::new();
+
+        for stmt in &program.statements {
+            match stmt {
+                ast::Statement::StructDef(struct_def) => {
+                    for field in &struct_def.fields {
+                        collect_segs(&mut tys, &field.type_.segments);
+                    }
+                }
+                ast::Statement::FunctionDef(fn_def) => {
+                    collect_fn(&mut tys, fn_def);
+                }
+                ast::Statement::Impl(impl_def) => {
+                    for fn_def in &impl_def.associated_functions {
+                        match fn_def {
+                            ast::AssociatedFunction::Function(fn_def) => {
+                                collect_fn(&mut tys, fn_def);
+                            }
+                            ast::AssociatedFunction::Method(fn_def) => {
+                                collect_fn(&mut tys, fn_def);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(tys.into_iter().collect())
+    }
+
+    pub fn monomorphize(&mut self, program: &ast::Program) -> Result<()> {
+        let tys = self.list_generic_inst(program)?;
+        for ty in tys {
+            if ty.segments.is_empty() {
+                continue;
+            }
+
+            let name = &ty.segments[0].ident;
+            if name == "Vec" {
+                let name = self.segs_to_string(&ty.segments)?;
+
+                let ty_id = self.struct_map.insert(
+                    &name,
+                    StructType {
+                        name: name.to_string(),
+                        fields: Map::new(),
+                    },
+                );
+
+                let mut add_method =
+                    |f_name: &str, func: NativeFn, args: Vec<Type>, return_ty: Type| {
+                        let mut f = ty.segments.clone();
+                        f.push(ast::PathSegment {
+                            ident: f_name.to_string(),
+                            args: vec![],
+                        });
+                        let f = self.segs_to_string(&f)?;
+                        self.register_native_fn(&f, func, args, return_ty)
+                    };
+
+                add_method(
+                    "new",
+                    Box::new(builtin::builtin_vec_new(ty_id as u32)),
+                    vec![],
+                    Type::Struct(ty_id as u32),
+                )?;
+
+                add_method(
+                    "push",
+                    Box::new(builtin::builtin_vec_push),
+                    vec![Type::Struct(ty_id as u32), Type::Nil],
+                    Type::Nil,
+                )?;
+
+                add_method(
+                    "len",
+                    builtin::builtin_vec_len(),
+                    vec![Type::Struct(ty_id as u32)],
+                    Type::Int,
+                )?;
+            }
+        }
+
+        Ok(())
+    }
+
     pub fn build_struct_map(&mut self, program: &ast::Program) -> Result<()> {
         for stmt in &program.statements {
             if let ast::Statement::StructDef(struct_def) = stmt {
@@ -111,6 +296,8 @@ impl Generator {
                 self.struct_map.insert(name, val);
             }
         }
+
+        self.monomorphize(program)?;
 
         for stmt in &program.statements {
             if let ast::Statement::StructDef(struct_def) = stmt {
@@ -252,8 +439,8 @@ impl Generator {
     }
 
     pub fn compile(&mut self, program: &ast::Program) -> Result<Program> {
-        let mut functions = std::mem::take(&mut self.functions);
         self.build_struct_map(program)?;
+        let mut functions = std::mem::take(&mut self.functions);
         self.build_func_map(program)?;
 
         let mut entry_function = None;
@@ -882,11 +1069,10 @@ pub struct FnType {
     pub return_ty: Type,
 }
 
-#[derive(Debug)]
 pub enum Function {
     Native {
         name: String,
-        func: NativeFnPtr,
+        func: NativeFn,
         return_type: Option<Type>,
     },
     Custom {
@@ -895,6 +1081,62 @@ pub enum Function {
         local_var_cnt: u32,
         return_type: Option<Type>,
     },
+}
+
+impl Debug for Function {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        struct Native<'a> {
+            name: &'a str,
+            _func: &'a NativeFn,
+            return_type: Option<&'a Type>,
+        }
+
+        impl<'a> Debug for Native<'a> {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                f.debug_struct("Native")
+                    .field("name", &self.name)
+                    .field("return_type", &self.return_type)
+                    .finish()
+            }
+        }
+
+        #[allow(dead_code)]
+        #[derive(Debug)]
+        struct Custom<'a> {
+            name: &'a str,
+            codes: &'a [ByteCode],
+            local_var_cnt: u32,
+            return_type: Option<&'a Type>,
+        }
+
+        let mut f = f.debug_tuple("Function");
+        match self {
+            Function::Native {
+                name,
+                func,
+                return_type,
+            } => f
+                .field(&Native {
+                    name,
+                    _func: func,
+                    return_type: return_type.as_ref(),
+                })
+                .finish(),
+            Function::Custom {
+                name,
+                codes,
+                local_var_cnt,
+                return_type,
+            } => f
+                .field(&Custom {
+                    name,
+                    codes,
+                    local_var_cnt: *local_var_cnt,
+                    return_type: return_type.as_ref(),
+                })
+                .finish(),
+        }
+    }
 }
 
 impl Function {

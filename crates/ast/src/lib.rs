@@ -1,42 +1,42 @@
 use token::Literal;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Program {
     pub statements: Vec<Statement>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Statement {
     StructDef(StructDef),
     FunctionDef(FunctionDef),
     Impl(Impl),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Impl {
     pub ty: Type,
     pub associated_functions: Vec<AssociatedFunction>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum AssociatedFunction {
     Function(FunctionDef),
     Method(FunctionDef),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct StructDef {
     pub name: String,
     pub fields: Vec<Field>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Field {
     pub name: String,
     pub type_: Type,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FunctionDef {
     pub name: String,
     pub args: Vec<Arg>,
@@ -44,18 +44,18 @@ pub struct FunctionDef {
     pub body: Block,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Arg {
     pub name: String,
     pub type_: Type,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Block {
     pub statements: Vec<BlockStmt>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum BlockStmt {
     Let(LetStmt),
     Assign(AssignStmt),
@@ -68,37 +68,37 @@ pub enum BlockStmt {
     Continue,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct LetStmt {
     pub var_name: String,
     pub expr: Expr,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct AssignStmt {
     pub target: Expr,
     pub expr: Expr,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ReturnStmt {
     pub expr: Option<Expr>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct IfStmt {
     pub condition: Box<Expr>,
     pub then_branch: Box<Block>,
     pub else_branch: Option<Box<Block>>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct WhileStmt {
     pub condition: Box<Expr>,
     pub block: Box<Block>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Expr {
     Literal(Literal),
     Unary {
@@ -132,18 +132,18 @@ pub enum Expr {
     },
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct Type {
     pub segments: Vec<PathSegment>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct PathSegment {
     pub ident: String,
     pub args: Vec<Type>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FieldAssign {
     pub name: String,
     pub expr: Expr,
