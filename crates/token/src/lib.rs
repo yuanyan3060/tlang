@@ -92,6 +92,7 @@ pub enum Token {
     /// \n
     NewLine,
     Unknown,
+    Comment(String),
     Eof,
 }
 
@@ -145,6 +146,7 @@ impl Token {
             Token::Impl => TokenKind::Impl,
             Token::NewLine => TokenKind::NewLine,
             Token::Unknown => TokenKind::Unknown,
+            Token::Comment(_) => TokenKind::Comment,
             Token::Eof => TokenKind::Eof,
         }
     }
@@ -200,6 +202,7 @@ impl fmt::Debug for Token {
             Token::Impl => write!(f, "impl"),
             Token::NewLine => write!(f, "\\n"),
             Token::Unknown => write!(f, "unknown"),
+            Token::Comment(text) => write!(f, "comment({:?})", text),
             Token::Eof => write!(f, "eof"),
         }
     }
@@ -315,6 +318,7 @@ pub enum TokenKind {
     /// \n
     NewLine,
     Unknown,
+    Comment,
     Eof,
 }
 
@@ -369,6 +373,7 @@ impl fmt::Display for TokenKind {
             TokenKind::Impl => write!(f, "impl"),
             TokenKind::NewLine => write!(f, "\\n"),
             TokenKind::Unknown => write!(f, "unknown"),
+            TokenKind::Comment => write!(f, "comment"),
             TokenKind::Eof => write!(f, "eof"),
         }
     }

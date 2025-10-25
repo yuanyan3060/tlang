@@ -64,6 +64,10 @@ impl<'a> Lex<'a> {
                 continue;
             }
 
+            if matches!(token, Token::Comment(_)) {
+                continue;
+            }
+
             if token == Token::Eof {
                 tokens.push((token, pos));
                 break;
@@ -177,7 +181,58 @@ impl<'a> Lex<'a> {
                 }
             }
             '*' => Token::Star,
-            '/' => Token::Slash,
+            '/' => match self.first() {
+                '/' => {
+                    self.bump();
+                    let mut comment = "".to_string();
+                    loop {
+                        match self.first() {
+                            '\n' => break,
+                            '\r' if self.second() == '\n' => {
+                                break;
+                            }
+                            EOF_CHAR => break,
+                            c => {
+                                self.bump();
+                                comment.push(c);
+                            }
+                        }
+                    }
+                    Token::Comment(comment)
+                }
+                '*' => {
+                    self.bump();
+                    let mut comment = "".to_string();
+                    let mut left_cnt = 1;
+                    loop {
+                        match self.first() {
+                            '*' if self.second() == '/' => {
+                                self.bump();
+                                self.bump();
+                                left_cnt -= 1;
+                                if left_cnt == 0 {
+                                    break;
+                                } else {
+                                    comment.push_str("*/");
+                                }
+                            }
+                            '/' if self.second() == '*' => {
+                                left_cnt += 1;
+                                self.bump();
+                                self.bump();
+                                comment.push_str("/*");
+                            }
+                            EOF_CHAR => break,
+                            c => {
+                                self.bump();
+                                comment.push(c);
+                            }
+                        }
+                    }
+                    Token::Comment(comment)
+                }
+                _ => Token::Slash,
+            },
             '%' => Token::Percent,
             c if c.is_numeric() => {
                 let mut is_float = false;

@@ -1,1 +1,3 @@
 /target
+/other/vscode-extension/dist
+/other/vscode-extension/node_modules
