@@ -1,0 +1,50 @@
+{
+	"$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+	"name": "tlang",
+	"patterns": [
+		{
+			"include": "#comments"
+		},
+		{
+			"include": "#keywords"
+		},
+		{
+			"include": "#strings"
+		}
+	],
+	"repository": {
+		"comments": {
+			"patterns": [
+				{
+					"name": "comment.line.double-slash.tlang",
+					"match": "//.*$"
+				},
+				{
+					"name": "comment.block.tlang",
+					"begin": "/\\*",
+					"end": "\\*/"
+				}
+			]
+		},
+		"keywords": {
+			"patterns": [
+				{
+					"name": "keyword.control.tlang",
+					"match": "\\b(fn|let|return|struct|impl|true|false|if|while|else|break|continue|self)\\b"
+				}
+			]
+		},
+		"strings": {
+			"name": "string.quoted.double.tlang",
+			"begin": "\"",
+			"end": "\"",
+			"patterns": [
+				{
+					"name": "constant.character.escape.tlang",
+					"match": "\\\\."
+				}
+			]
+		}
+	},
+	"scopeName": "source.tdlang"
+}

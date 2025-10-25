@@ -1,0 +1,46 @@
+{
+  "name": "tlang",
+  "displayName": "tlang",
+  "description": "tlang",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.105.0"
+  },
+  "scripts": {
+    "vscode:prepublish": "webpack --mode production",
+    "compile": "webpack --mode none",
+    "watch": "webpack --mode none --watch",
+    "build": "vsce package -o ./dist/"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "tlang",
+        "aliases": [
+          "tlang",
+          "tlang"
+        ],
+        "extensions": [
+          ".td"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "tlang",
+        "scopeName": "source.tdlang",
+        "path": "./syntaxes/tlang.tmLanguage.json"
+      }
+    ]
+  },
+  "devDependencies": {
+    "ts-loader": "^9.5.4",
+    "vsce": "^2.15.0",
+    "webpack": "^5.102.1",
+    "webpack-cli": "^6.0.1"
+  }
+}
