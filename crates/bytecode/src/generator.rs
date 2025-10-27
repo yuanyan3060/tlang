@@ -200,18 +200,18 @@ impl Generator {
 
         let mut tys = HashSet::new();
 
-        for stmt in &program.statements {
-            match stmt {
-                ast::Statement::StructDef(struct_def) => {
+        for def in &program.defs {
+            match def {
+                ast::Definition::StructDef(struct_def) => {
                     for field in &struct_def.fields {
                         collect_segs(&mut tys, &field.type_.segments);
                     }
                 }
-                ast::Statement::FunctionDef(fn_def) => {
+                ast::Definition::FunctionDef(fn_def) => {
                     collect_fn(&mut tys, fn_def);
                 }
-                ast::Statement::Impl(impl_def) => {
-                    for fn_def in &impl_def.associated_functions {
+                ast::Definition::ImplDef(impl_def) => {
+                    for fn_def in &impl_def.functions {
                         match fn_def {
                             ast::AssociatedFunction::Function(fn_def) => {
                                 collect_fn(&mut tys, fn_def);
@@ -296,8 +296,8 @@ impl Generator {
     }
 
     pub fn build_struct_map(&mut self, program: &ast::Program) -> Result<()> {
-        for stmt in &program.statements {
-            if let ast::Statement::StructDef(struct_def) = stmt {
+        for def in &program.defs {
+            if let ast::Definition::StructDef(struct_def) = def {
                 let name = &struct_def.name;
                 if self.struct_map.contains_key(name) {
                     continue;
@@ -312,8 +312,8 @@ impl Generator {
 
         self.monomorphize(program)?;
 
-        for stmt in &program.statements {
-            if let ast::Statement::StructDef(struct_def) = stmt {
+        for def in &program.defs {
+            if let ast::Definition::StructDef(struct_def) = def {
                 let name = &struct_def.name;
                 let mut fields = Map::new();
                 for f in &struct_def.fields {
@@ -333,9 +333,9 @@ impl Generator {
     }
 
     pub fn build_func_map(&mut self, program: &ast::Program) -> Result<()> {
-        for stmt in &program.statements {
-            match stmt {
-                ast::Statement::FunctionDef(fn_def) => {
+        for def in &program.defs {
+            match def {
+                ast::Definition::FunctionDef(fn_def) => {
                     let name = &fn_def.name;
                     if self.fn_map.contains_key(name) {
                         return Err(Error::DuplicateDef {
@@ -357,10 +357,10 @@ impl Generator {
                     let val = FnType { args, return_ty };
                     self.fn_map.insert(name, val);
                 }
-                ast::Statement::Impl(impl_def) => {
+                ast::Definition::ImplDef(impl_def) => {
                     let self_ty_str = self.ty_to_string(&impl_def.ty)?;
 
-                    for fn_def in &impl_def.associated_functions {
+                    for fn_def in &impl_def.functions {
                         let fn_def = match fn_def {
                             ast::AssociatedFunction::Function(function_def) => function_def,
                             ast::AssociatedFunction::Method(function_def) => function_def,
@@ -386,7 +386,7 @@ impl Generator {
                         self.fn_map.insert(&name, val);
                     }
                 }
-                ast::Statement::StructDef(..) => {}
+                ast::Definition::StructDef(..) => {}
             }
         }
         Ok(())
@@ -458,13 +458,13 @@ impl Generator {
 
         let mut entry_function = None;
 
-        for stmt in &program.statements {
-            match stmt {
-                ast::Statement::Impl(impl_def) => {
+        for def in &program.defs {
+            match def {
+                ast::Definition::ImplDef(impl_def) => {
                     let self_ty = self.get_type(&impl_def.ty)?;
                     let self_ty_str = self.ty_to_string(&impl_def.ty)?;
 
-                    for fn_def in &impl_def.associated_functions {
+                    for fn_def in &impl_def.functions {
                         let (is_method, fn_def) = match fn_def {
                             ast::AssociatedFunction::Function(function_def) => {
                                 (false, function_def)
@@ -487,7 +487,7 @@ impl Generator {
                     }
                 }
 
-                ast::Statement::FunctionDef(function_def) => {
+                ast::Definition::FunctionDef(function_def) => {
                     let return_ty = function_def
                         .return_type
                         .as_ref()
@@ -505,7 +505,7 @@ impl Generator {
                     }
                     functions.push(f);
                 }
-                ast::Statement::StructDef(..) => {}
+                ast::Definition::StructDef(..) => {}
             }
         }
 

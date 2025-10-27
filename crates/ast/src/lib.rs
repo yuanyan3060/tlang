@@ -2,20 +2,20 @@ use token::Literal;
 
 #[derive(Debug, Clone)]
 pub struct Program {
-    pub statements: Vec<Statement>,
+    pub defs: Vec<Definition>,
 }
 
 #[derive(Debug, Clone)]
-pub enum Statement {
+pub enum Definition {
     StructDef(StructDef),
     FunctionDef(FunctionDef),
-    Impl(Impl),
+    ImplDef(ImplDef),
 }
 
 #[derive(Debug, Clone)]
-pub struct Impl {
+pub struct ImplDef {
     pub ty: Type,
-    pub associated_functions: Vec<AssociatedFunction>,
+    pub functions: Vec<AssociatedFunction>,
 }
 
 #[derive(Debug, Clone)]

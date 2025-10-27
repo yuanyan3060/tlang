@@ -114,26 +114,22 @@ impl<'a> Parser<'a> {
     }
 
     pub fn parse_program(&mut self) -> ParseResult<ast::Program> {
-        let mut program = ast::Program {
-            statements: Vec::new(),
-        };
+        let mut program = ast::Program { defs: Vec::new() };
 
         loop {
             self.skip_newline();
             match self.first_full() {
                 (Token::Struct, _) => {
                     let node = self.parse_struct()?;
-                    program.statements.push(ast::Statement::StructDef(node));
+                    program.defs.push(ast::Definition::StructDef(node));
                 }
                 (Token::Fn, _) => {
                     let function = self.parse_fn()?;
-                    program
-                        .statements
-                        .push(ast::Statement::FunctionDef(function));
+                    program.defs.push(ast::Definition::FunctionDef(function));
                 }
                 (Token::Impl, _) => {
                     let impl_ = self.parse_impl()?;
-                    program.statements.push(ast::Statement::Impl(impl_));
+                    program.defs.push(ast::Definition::ImplDef(impl_));
                 }
                 (Token::Eof, _) => {
                     break;
@@ -151,7 +147,7 @@ impl<'a> Parser<'a> {
         Ok(program)
     }
 
-    pub fn parse_impl(&mut self) -> ParseResult<ast::Impl> {
+    pub fn parse_impl(&mut self) -> ParseResult<ast::ImplDef> {
         self.skip_newline();
         self.expect(TokenKind::Impl)?;
 
@@ -186,9 +182,9 @@ impl<'a> Parser<'a> {
                 }
             }
         }
-        Ok(ast::Impl {
+        Ok(ast::ImplDef {
             ty,
-            associated_functions,
+            functions: associated_functions,
         })
     }
 
