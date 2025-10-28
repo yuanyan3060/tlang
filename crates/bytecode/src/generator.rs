@@ -4,8 +4,10 @@ use std::fmt::{Debug, Display};
 use value::{NativeFn, Type};
 
 use crate::ByteCode;
+use crate::scope::Env;
 
 pub struct Generator {
+    pub env: Env,
     pub constant_map: Map<String>,
     pub struct_map: Map<StructType>,
     pub fn_map: Map<FnType>,
@@ -22,6 +24,7 @@ impl Default for Generator {
 impl Generator {
     pub fn new() -> Self {
         Self {
+            env: Env::new(),
             constant_map: Map::new(),
             struct_map: Map::new(),
             fn_map: Map::new(),
@@ -198,32 +201,39 @@ impl Generator {
             collect_block(tys, &fn_def.body);
         }
 
-        let mut tys = HashSet::new();
-
-        for def in &program.defs {
-            match def {
-                ast::Definition::StructDef(struct_def) => {
-                    for field in &struct_def.fields {
-                        collect_segs(&mut tys, &field.type_.segments);
+        fn collect_defs(tys: &mut HashSet<ast::Type>, defs: &[ast::Definition]) {
+            for def in defs {
+                match def {
+                    ast::Definition::StructDef(struct_def) => {
+                        for field in &struct_def.fields {
+                            collect_segs(tys, &field.type_.segments);
+                        }
                     }
-                }
-                ast::Definition::FunctionDef(fn_def) => {
-                    collect_fn(&mut tys, fn_def);
-                }
-                ast::Definition::ImplDef(impl_def) => {
-                    for fn_def in &impl_def.functions {
-                        match fn_def {
-                            ast::AssociatedFunction::Function(fn_def) => {
-                                collect_fn(&mut tys, fn_def);
-                            }
-                            ast::AssociatedFunction::Method(fn_def) => {
-                                collect_fn(&mut tys, fn_def);
+                    ast::Definition::FunctionDef(fn_def) => {
+                        collect_fn(tys, fn_def);
+                    }
+                    ast::Definition::ImplDef(impl_def) => {
+                        for fn_def in &impl_def.functions {
+                            match fn_def {
+                                ast::AssociatedFunction::Function(fn_def) => {
+                                    collect_fn(tys, fn_def);
+                                }
+                                ast::AssociatedFunction::Method(fn_def) => {
+                                    collect_fn(tys, fn_def);
+                                }
                             }
                         }
+                    }
+                    ast::Definition::ModDef(mod_def) => {
+                        collect_defs(tys, &mod_def.defs);
                     }
                 }
             }
         }
+
+        let mut tys = HashSet::new();
+
+        collect_defs(&mut tys, &program.defs);
 
         Ok(tys.into_iter().collect())
     }
@@ -295,40 +305,70 @@ impl Generator {
         Ok(())
     }
 
-    pub fn build_struct_map(&mut self, program: &ast::Program) -> Result<()> {
-        for def in &program.defs {
-            if let ast::Definition::StructDef(struct_def) = def {
-                let name = &struct_def.name;
-                if self.struct_map.contains_key(name) {
-                    continue;
+    fn collect_structs(&mut self, defs: &[ast::Definition]) -> Result<()> {
+        for def in defs {
+            match def {
+                ast::Definition::StructDef(struct_def) => {
+                    let name = self.env.full_name(&struct_def.name);
+                    if self.struct_map.contains_key(&name) {
+                        continue;
+                    }
+                    let val = StructType {
+                        name: name.to_string(),
+                        fields: Map::new(),
+                    };
+                    self.struct_map.insert(&name, val);
                 }
-                let val = StructType {
-                    name: name.to_string(),
-                    fields: Map::new(),
-                };
-                self.struct_map.insert(name, val);
+
+                ast::Definition::ModDef(mod_def) => {
+                    self.env.enter(&mod_def.name);
+                    self.collect_structs(&mod_def.defs)?;
+                    self.env.exit();
+                }
+                ast::Definition::FunctionDef(_) => {}
+                ast::Definition::ImplDef(_) => {}
             }
         }
+        Ok(())
+    }
+
+    fn fill_struct_field(&mut self, defs: &[ast::Definition]) -> Result<()> {
+        for def in defs {
+            match def {
+                ast::Definition::StructDef(struct_def) => {
+                    let name = self.env.full_name(&struct_def.name);
+                    let mut fields = Map::new();
+                    for f in &struct_def.fields {
+                        let ty = self.get_type(&f.type_)?;
+                        let field = Field {
+                            name: f.name.to_string(),
+                            ty,
+                        };
+                        fields.insert(&f.name, field);
+                    }
+                    self.struct_map.get_name_mut(&name).unwrap().fields = fields;
+                }
+
+                ast::Definition::ModDef(mod_def) => {
+                    self.env.enter(&mod_def.name);
+                    self.fill_struct_field(&mod_def.defs)?;
+                    self.env.exit();
+                }
+                ast::Definition::FunctionDef(_) => {}
+                ast::Definition::ImplDef(_) => {}
+            }
+        }
+        Ok(())
+    }
+
+    pub fn build_struct_map(&mut self, program: &ast::Program) -> Result<()> {
+        self.env.goto_root();
+        self.collect_structs(&program.defs)?;
 
         self.monomorphize(program)?;
 
-        for def in &program.defs {
-            if let ast::Definition::StructDef(struct_def) = def {
-                let name = &struct_def.name;
-                let mut fields = Map::new();
-                for f in &struct_def.fields {
-                    let ty = self.get_type(&f.type_)?;
-                    fields.insert(
-                        &f.name,
-                        Field {
-                            name: f.name.to_string(),
-                            ty,
-                        },
-                    );
-                }
-                self.struct_map.get_name_mut(name).unwrap().fields = fields;
-            }
-        }
+        self.env.goto_root();
+        self.fill_struct_field(&program.defs)?;
         Ok(())
     }
 

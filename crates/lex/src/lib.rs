@@ -1,5 +1,4 @@
 use std::str::Chars;
-
 use token::{Literal, Token};
 use unicode_xid::UnicodeXID;
 
@@ -294,6 +293,7 @@ impl<'a> Lex<'a> {
                     "else" => Token::Else,
                     "break" => Token::Break,
                     "continue" => Token::Continue,
+                    "mod" => Token::Mod,
                     _ => Token::Ident(ident),
                 }
             }
