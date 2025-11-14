@@ -10,19 +10,12 @@ pub enum Definition {
     StructDef(StructDef),
     FunctionDef(FunctionDef),
     ImplDef(ImplDef),
-    ModDef(ModDef)
 }
 
 #[derive(Debug, Clone)]
 pub struct ImplDef {
     pub ty: Type,
     pub functions: Vec<AssociatedFunction>,
-}
-
-#[derive(Debug, Clone)]
-pub struct ModDef {
-    pub name: String,
-    pub defs: Vec<Definition>,
 }
 
 #[derive(Debug, Clone)]

@@ -88,7 +88,6 @@ pub enum Token {
     // ::
     Path,
     Impl,
-    Mod,
 
     /// \n
     NewLine,
@@ -145,7 +144,6 @@ impl Token {
             Token::Continue => TokenKind::Continue,
             Token::Path => TokenKind::Path,
             Token::Impl => TokenKind::Impl,
-            Token::Mod => TokenKind::Mod,
             Token::NewLine => TokenKind::NewLine,
             Token::Unknown => TokenKind::Unknown,
             Token::Comment(_) => TokenKind::Comment,
@@ -202,7 +200,6 @@ impl fmt::Debug for Token {
             Token::Continue => write!(f, "continue"),
             Token::Path => write!(f, "::"),
             Token::Impl => write!(f, "impl"),
-            Token::Mod => write!(f, "mod"),
             Token::NewLine => write!(f, "\\n"),
             Token::Unknown => write!(f, "unknown"),
             Token::Comment(text) => write!(f, "comment({:?})", text),
@@ -317,7 +314,6 @@ pub enum TokenKind {
     Continue,
     Path,
     Impl,
-    Mod,
 
     /// \n
     NewLine,
@@ -375,7 +371,6 @@ impl fmt::Display for TokenKind {
             TokenKind::Continue => write!(f, "continue"),
             TokenKind::Path => write!(f, "::"),
             TokenKind::Impl => write!(f, "impl"),
-            TokenKind::Mod => write!(f, "mod"),
             TokenKind::NewLine => write!(f, "\\n"),
             TokenKind::Unknown => write!(f, "unknown"),
             TokenKind::Comment => write!(f, "comment"),

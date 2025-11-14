@@ -131,10 +131,6 @@ impl<'a> Parser<'a> {
                     let impl_ = self.parse_impl()?;
                     program.defs.push(ast::Definition::ImplDef(impl_));
                 }
-                (Token::Mod, _) => {
-                    let mod_ = self.parse_mod()?;
-                    program.defs.push(ast::Definition::ModDef(mod_));
-                }
                 (Token::Eof, _) => {
                     break;
                 }
@@ -149,54 +145,6 @@ impl<'a> Parser<'a> {
         }
 
         Ok(program)
-    }
-
-    pub fn parse_mod(&mut self) -> ParseResult<ast::ModDef> {
-        self.skip_newline();
-        self.expect(TokenKind::Mod)?;
-
-        self.skip_newline();
-        let name = self.expect_ident()?;
-        let mut defs = Vec::new();
-
-        self.skip_newline();
-        self.expect(TokenKind::OpenBrace)?;
-
-        loop {
-            self.skip_newline();
-            match self.first_full() {
-                (Token::Struct, _) => {
-                    let node = self.parse_struct()?;
-                    defs.push(ast::Definition::StructDef(node));
-                }
-                (Token::Fn, _) => {
-                    let function = self.parse_fn()?;
-                    defs.push(ast::Definition::FunctionDef(function));
-                }
-                (Token::Impl, _) => {
-                    let impl_ = self.parse_impl()?;
-                    defs.push(ast::Definition::ImplDef(impl_));
-                }
-                (Token::Eof, _) => {
-                    break;
-                }
-                (Token::CloseBrace, _) => {
-                    self.bump();
-                    break;
-                }
-                (token, pos) => {
-                    return Err(ParseError::Unexpected {
-                        expected: vec![TokenKind::Fn, TokenKind::CloseBrace],
-                        found: token.clone(),
-                        pos,
-                    });
-                }
-            }
-        }
-        Ok(ast::ModDef {
-            name,
-            defs
-        })
     }
 
     pub fn parse_impl(&mut self) -> ParseResult<ast::ImplDef> {

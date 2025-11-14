@@ -1,5 +1,4 @@
 pub mod generator;
-pub mod scope;
 
 #[derive(Debug)]
 pub enum ByteCode {

@@ -71,12 +71,3 @@ fn main() {
     print(Solution::video_stitching(clips, 10));
     return;
 }
-
-mod help {
-    struct Human {
-    }
-
-    impl Human {
-
-    }
-}
