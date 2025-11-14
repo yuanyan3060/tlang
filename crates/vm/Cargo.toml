@@ -17,6 +17,7 @@ token = { path = "../token" }
 parser = { path = "../parser" }
 bytecode = { path = "../bytecode" }
 builtin = { path = "../builtin" }
-
 gc-arena = "0.5.3"
 
+[features]
+print_passes = []

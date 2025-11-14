@@ -61,8 +61,8 @@ fn push_clip(clips: Vec<Vec<int>>, l: int, r: int) {
 
 fn main() {
     let clips = Vec::<Vec<int>>::new();
-    /*
-    push_clip(clips, 0, 2);*/
+
+    push_clip(clips, 0, 2);
     push_clip(clips, 4, 6);
     push_clip(clips, 8, 10);
     push_clip(clips, 1, 9);

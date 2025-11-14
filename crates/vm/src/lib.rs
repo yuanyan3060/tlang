@@ -25,7 +25,7 @@ impl Vm {
         let code = std::fs::read_to_string(path)?;
         let lex = Lex::new(code.chars());
         let tokens = lex.all();
-        #[cfg(debug_assertions)]
+        #[cfg(feature = "print_passes")]
         lex::pretty_print(&tokens);
         let mut parser = Parser::new(tokens.iter());
         let program = parser.parse_program()?;
@@ -57,7 +57,7 @@ impl Vm {
         )?;
 
         let p = g.compile(&program)?;
-        #[cfg(debug_assertions)]
+        #[cfg(feature = "print_passes")]
         println!("{:#?}", p);
 
         self.arena.mutate_root(|mc, state| {
@@ -72,7 +72,7 @@ impl Vm {
 
     pub fn execute(&mut self, program: &Program) -> Result<(), Box<dyn Error>> {
         let main_fn = &program.functions[program.entry_function];
-        #[cfg(debug_assertions)]
+        #[cfg(feature = "print_passes")]
         {
             match main_fn {
                 Function::Native { .. } => {}
@@ -113,7 +113,7 @@ impl Vm {
                 let mut code_offset = 0;
                 while code_offset < codes.len() {
                     let code = &codes[code_offset];
-                    #[cfg(debug_assertions)]
+                    #[cfg(feature = "print_passes")]
                     {
                         arena.mutate_root(|mc, state| {
                             let locals = &mut state.locals[local_offset..];
