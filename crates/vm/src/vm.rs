@@ -400,12 +400,15 @@ impl Vm {
     pub(crate) fn set_var(&mut self, var: Loc, value: Value) {
         let tag = var.0 >> 14;
         let idx = (var.0 & 0x3fff) as usize;
-        match tag {
-            0 => self.mem.local[idx + self.local_offset] = value,
-            1 => self.mem.temp[idx + self.temp_offset] = value,
-            2 => self.mem.global[idx] = value,
-            3 => self.mem.consts[idx] = value,
-            _ => unreachable!(),
+
+        unsafe {
+            match tag {
+                0 => *self.mem.local.get_unchecked_mut(idx + self.local_offset) = value,
+                1 => *self.mem.temp.get_unchecked_mut(idx + self.temp_offset) = value,
+                2 => *self.mem.global.get_unchecked_mut(idx) = value,
+                3 => *self.mem.consts.get_unchecked_mut(idx) = value,
+                _ => unreachable!(),
+            }
         }
     }
 
@@ -413,15 +416,18 @@ impl Vm {
     pub(crate) fn get_var(&self, var: Loc) -> Value {
         let tag = var.0 >> 14;
         let idx = (var.0 & 0x3fff) as usize;
-        match tag {
-            0 => self.mem.local[idx + self.local_offset],
-            1 => self.mem.temp[idx + self.temp_offset],
-            2 => self.mem.global[idx],
-            3 => self.mem.consts[idx],
-            _ => unreachable!(),
+        unsafe {
+            match tag {
+                0 => *self.mem.local.get_unchecked(idx + self.local_offset),
+                1 => *self.mem.temp.get_unchecked(idx + self.temp_offset),
+                2 => *self.mem.global.get_unchecked(idx),
+                3 => *self.mem.consts.get_unchecked(idx),
+                _ => unreachable!(),
+            }
         }
     }
 
+    #[inline(always)]
     fn compare(&self, left: Loc, right: Loc) -> Option<Ordering> {
         let left = self.get_var(left);
         let right = self.get_var(right);
@@ -453,7 +459,4 @@ impl Vm {
     }
 }
 
-
-pub struct CallFrame {
-    
-}
+pub struct CallFrame {}

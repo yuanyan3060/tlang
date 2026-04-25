@@ -513,6 +513,40 @@ fn pass2(input: &[Instruction]) -> (Vec<Instruction>, bool) {
                         from: from0,
                         to: Variable::Temp(to0),
                     },
+                    Instruction::Call {
+                        dst,
+                        func: Operand::Variable(Variable::Temp(func)),
+                        param_cnt,
+                    },
+                ) if to0 == func => {
+                    output.push(Instruction::Call {
+                        dst: *dst,
+                        func: Operand::Variable(*from0),
+                        param_cnt: *param_cnt,
+                    });
+                    i += 2;
+                    changed = true;
+                    continue;
+                }
+
+                (
+                    Instruction::Load {
+                        from: from0,
+                        to: Variable::Temp(to0),
+                    },
+                    Instruction::Return { var: Some(Operand::Variable(Variable::Temp(r))) },
+                ) if to0 == r => {
+                    output.push(Instruction::Return { var: Some(Operand::Variable(*from0)) });
+                    i += 2;
+                    changed = true;
+                    continue;
+                }
+
+                (
+                    Instruction::Load {
+                        from: from0,
+                        to: Variable::Temp(to0),
+                    },
                     Instruction::StoreLocal {
                         src: Operand::Variable(Variable::Temp(src)),
                         dst,
