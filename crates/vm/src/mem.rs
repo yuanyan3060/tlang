@@ -1,12 +1,15 @@
 use std::array::from_fn;
 use std::collections::VecDeque;
 
-use slotmap::SlotMap;
 use crate::value::{GcData, GcHandle, GcMark, GcValue, Value};
+use slotmap::SlotMap;
 
 pub struct Mem {
     pub stack: Vec<Value>,
+    pub local: Vec<Value>,
+    pub temp: Vec<Value>,
     pub global: Vec<Value>,
+    pub consts: Vec<Value>,
     pub heap: SlotMap<GcHandle, GcValue>,
 }
 
@@ -14,11 +17,25 @@ impl Mem {
     pub fn new() -> Self {
         Self {
             stack: Vec::new(),
+            local: Vec::new(),
+            temp: Vec::new(),
             global: Vec::new(),
+            consts: Vec::new(),
             heap: SlotMap::default(),
         }
     }
 
+    #[inline(always)]
+    pub fn get(&self, handle: GcHandle) -> &GcData {
+        self.heap.get(handle).map(|x| &x.data).unwrap()
+    }
+
+    #[inline(always)]
+    pub fn get_mut(&mut self, handle: GcHandle) -> &mut GcData {
+        self.heap.get_mut(handle).map(|x| &mut x.data).unwrap()
+    }
+
+    #[inline(always)]
     pub fn alloc(&mut self, data: GcData) -> GcHandle {
         self.heap.insert(GcValue {
             data,
@@ -26,27 +43,9 @@ impl Mem {
         })
     }
 
+    #[inline(always)]
     pub fn push_stack(&mut self, value: Value) {
         self.stack.push(value);
-    }
-
-    pub fn pop_stack(&mut self) -> Option<Value> {
-        self.stack.pop()
-    }
-
-    pub fn batch_pop_stack<const N: usize>(&mut self) -> Option<[Value; N]> {
-        if self.stack.len() < N {
-            return None;
-        }
-
-        let len = self.stack.len();
-        let start = len.saturating_sub(N);
-
-        let mut iter = self.stack.drain(start..);
-        
-        Some(std::array::from_fn(|_| {
-            iter.next().unwrap()
-        }))
     }
 }
 
@@ -69,7 +68,15 @@ impl Tracer {
     fn mark(&mut self, mem: &mut Mem) {
         self.queue.clear();
 
-        for value in mem.stack.iter().chain(&mem.global) {
+        let root = mem
+            .stack
+            .iter()
+            .chain(&mem.global)
+            .chain(&mem.local)
+            .chain(&mem.temp)
+            .chain(&mem.consts);
+
+        for value in root {
             let Some(handle) = value.as_handle() else {
                 continue;
             };

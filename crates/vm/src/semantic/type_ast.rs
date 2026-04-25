@@ -1,7 +1,7 @@
 use ast::{BinaryOp, UnaryOp};
 use token::Literal;
 
-use crate::semantic::ty::TypeId;
+use crate::semantic::{scope::Location, ty::TypeId};
 
 #[derive(Debug, Clone)]
 pub struct Program {
@@ -44,13 +44,16 @@ pub struct FunctionDef {
     pub name: String,
     pub args: Vec<Arg>,
     pub return_type: Option<TypeId>,
+    pub local_count: usize,
     pub body: Block,
+    pub idx: usize
 }
 
 #[derive(Debug, Clone)]
 pub struct Arg {
     pub name: String,
     pub type_: TypeId,
+    pub location: Location,
 }
 
 #[derive(Debug, Clone)]
@@ -74,6 +77,7 @@ pub enum BlockStmt {
 #[derive(Debug, Clone)]
 pub struct LetStmt {
     pub var_name: String,
+    pub location: Location,
     pub expr: Expr,
 }
 
@@ -132,7 +136,8 @@ pub enum Expr {
     Member {
         target: Box<Expr>,
         member: String,
-        ty: TypeId
+        offset: usize,
+        member_ty: TypeId
     },
     Struct {
         struct_ty: TypeId,
@@ -140,13 +145,14 @@ pub enum Expr {
     },
     Path {
         segments: Vec<PathSegment>,
+        location: Location,
         ty: TypeId
     },
     Method {
         this_ty: TypeId,
         method_name: String,
-        method_ty: TypeId
-
+        method_ty: TypeId,
+        location: Location,
     },
 }
 
@@ -158,7 +164,7 @@ impl Expr {
             Expr::Binary { ty, ..  } => ty,
             Expr::Call { ty, ..  } => ty,
             Expr::Index { ty, ..  } => ty,
-            Expr::Member{ ty, ..  } => ty,
+            Expr::Member{ member_ty: ty, ..  } => ty,
             Expr::Struct { struct_ty, ..  } => struct_ty,
             Expr::Path { ty, ..  } => ty,
             Expr::Method { method_ty, .. } => method_ty

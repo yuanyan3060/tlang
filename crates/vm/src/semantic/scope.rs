@@ -5,8 +5,16 @@ use crate::semantic::ty::{GenericFn, TypeId};
 
 #[derive(Debug)]
 pub enum Indent {
-    Local { name: String, ty: TypeId, idx: usize },
-    GenericFn { name: String, f: GenericFn, idx: usize },
+    Local {
+        name: String,
+        ty: TypeId,
+        idx: usize,
+    },
+    GenericFn {
+        name: String,
+        f: GenericFn,
+        idx: usize,
+    },
 }
 
 impl Indent {
@@ -18,42 +26,42 @@ impl Indent {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
 pub enum Location {
     Local(usize),
-    Global(usize)
+    Global(usize),
+}
+
+impl Location {
+    pub fn as_global(&self) -> Option<usize> {
+        match self {
+            Location::Local(_) => None,
+            Location::Global(idx) => Some(*idx),
+        }
+    }
 }
 
 pub enum SymbolKind {
-    Normal {
-        type_id: TypeId,
-    },
-    GenericFn {
-        func: GenericFn
-    }
+    Normal { type_id: TypeId },
+    GenericFn { func: GenericFn },
 }
 
 pub struct Symbol {
     pub name: String,
     pub location: Location,
-    pub kind: SymbolKind
+    pub kind: SymbolKind,
 }
 
 impl Symbol {
     pub fn ty(&self) -> Option<TypeId> {
         match &self.kind {
             SymbolKind::Normal { type_id } => Some(*type_id),
-            _ => None
+            _ => None,
         }
     }
 }
 
-#[derive(Debug)]
-pub struct Scope {
-    parent: Option<usize>,
-    idents: HashMap<String, Indent>,
-}
-
-pub struct SymbolTable{
+pub struct SymbolTable {
     global: HashMap<String, Symbol>,
     locals: Vec<HashMap<String, Symbol>>,
     next_local: usize,
@@ -66,6 +74,14 @@ impl SymbolTable {
             locals: Vec::new(),
             next_local: 0,
         }
+    }
+
+    pub fn local_count(&self) -> usize {
+        self.next_local + 1
+    }
+
+    pub fn global_count(&self) -> usize {
+        self.global.len()
     }
 
     pub fn enter_scope(&mut self) {
@@ -89,17 +105,17 @@ impl SymbolTable {
         None
     }
 
-    pub fn insert(&mut self, name: &str, type_id: TypeId) -> Result<(), SemanticError> {
+    pub fn insert(&mut self, name: &str, type_id: TypeId) -> Result<Location, SemanticError> {
         let (scope, location) = match self.locals.last_mut() {
             Some(scope) => {
                 let loc = self.next_local;
                 self.next_local += 1;
                 (scope, Location::Local(loc))
-            },
+            }
             None => {
                 let loc = Location::Global(self.global.len());
                 (&mut self.global, loc)
-            },
+            }
         };
 
         if scope.contains_key(name) {
@@ -112,25 +128,22 @@ impl SymbolTable {
             kind: SymbolKind::Normal { type_id },
         };
 
-        scope.insert(
-            name.to_string(),
-            symbol
-        );
+        scope.insert(name.to_string(), symbol);
 
-        Ok(())
+        Ok(location)
     }
 
-    pub fn insert_generic_fn(&mut self, name: &str, func: GenericFn) -> Result<(), SemanticError> {
+    pub fn insert_generic_fn(&mut self, name: &str, func: GenericFn) -> Result<Location, SemanticError> {
         let (scope, location) = match self.locals.last_mut() {
             Some(scope) => {
                 let loc = self.next_local;
                 self.next_local += 1;
                 (scope, Location::Local(loc))
-            },
+            }
             None => {
                 let loc = Location::Global(self.global.len());
                 (&mut self.global, loc)
-            },
+            }
         };
 
         if scope.contains_key(name) {
@@ -143,11 +156,8 @@ impl SymbolTable {
             kind: SymbolKind::GenericFn { func },
         };
 
-        scope.insert(
-            name.to_string(),
-            symbol
-        );
+        scope.insert(name.to_string(), symbol);
 
-        Ok(())
+        Ok(location)
     }
 }

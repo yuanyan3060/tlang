@@ -2,7 +2,7 @@ use std::error::Error;
 
 use lex::Lex;
 use parser::Parser;
-use vm::semantic::Semantic;
+use vm::{Vm, compiler::{self, Compiler}, ir::IrBuilder, semantic::Semantic};
 
 fn main() -> Result<(), Box<dyn Error>> {
     let code = std::fs::read_to_string("main.td")?;
@@ -13,7 +13,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut parser = Parser::new(tokens.iter());
     let program = parser.parse_program()?;
     println!("{:#?}", program);
-    let program = Semantic::new().analysis_type(&program).unwrap();
-    println!("{:#?}", program);
+
+    let pkg = compiler::compile(&program)?;
+    let mut vm = Vm::new();
+    vm.execute(&pkg)?;
     Ok(())
 }

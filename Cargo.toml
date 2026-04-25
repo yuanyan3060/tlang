@@ -1,8 +1,7 @@
 [workspace]
 resolver = "3"
 members = [
-    "crates/ast", "crates/builtin",
-    "crates/bytecode",
+    "crates/ast", 
     "crates/compiler",
     "crates/lex",
     "crates/parser",

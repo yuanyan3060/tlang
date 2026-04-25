@@ -5,7 +5,7 @@ use std::fmt::{Debug, Display};
 use ast::{BinaryOp, Type, UnaryOp};
 
 use crate::semantic::functions::FunctionTable;
-use crate::semantic::scope::{Scope, SymbolTable};
+use crate::semantic::scope::{Location, SymbolTable};
 use crate::semantic::structs::StructTable;
 use crate::semantic::ty::{GenericFn, GenericSlot, TypeId, TypeKind, TypeSlot, TypeTable};
 
@@ -32,9 +32,30 @@ impl Semantic {
         }
     }
 
-    pub fn prelude_scope(&mut self) -> Result<(), SemanticError> {
+    pub fn init_global_symbol(&mut self) -> Result<(), SemanticError> {
         self.symbol_table.insert_generic_fn(
             "print",
+            GenericFn {
+                args: vec![TypeSlot::Dyn(GenericSlot(0))],
+                return_ty: None,
+            },
+        )?;
+        self.symbol_table.insert_generic_fn(
+            "Vec::new",
+            GenericFn {
+                args: vec![TypeSlot::Dyn(GenericSlot(0))],
+                return_ty: None,
+            },
+        )?;
+        self.symbol_table.insert_generic_fn(
+            "Vec::push",
+            GenericFn {
+                args: vec![TypeSlot::Dyn(GenericSlot(0))],
+                return_ty: None,
+            },
+        )?;
+        self.symbol_table.insert_generic_fn(
+            "Vec::len",
             GenericFn {
                 args: vec![TypeSlot::Dyn(GenericSlot(0))],
                 return_ty: None,
@@ -43,7 +64,11 @@ impl Semantic {
         Ok(())
     }
 
-    pub fn method(&mut self, this: TypeId, name: &str) -> Result<TypeId, SemanticError> {
+    pub fn method(
+        &mut self,
+        this: TypeId,
+        name: &str,
+    ) -> Result<(TypeId, Location), SemanticError> {
         match self.type_table.get(this).unwrap() {
             TypeKind::Nil => todo!(),
             TypeKind::Bool => todo!(),
@@ -52,18 +77,30 @@ impl Semantic {
             TypeKind::String => todo!(),
             TypeKind::Struct(struct_id) => todo!(),
             TypeKind::Vec { element } => match name {
-                "new" => Ok(self.type_table.intern(TypeKind::NativeFunction {
-                    args: Vec::new(),
-                    return_ty: this,
-                })),
-                "push" => Ok(self.type_table.intern(TypeKind::NativeFunction {
-                    args: vec![this, *element],
-                    return_ty: TypeId::NIL,
-                })),
-                "len" => Ok(self.type_table.intern(TypeKind::NativeFunction {
-                    args: vec![this],
-                    return_ty: TypeId::INT,
-                })),
+                "new" => {
+                    let type_id = self.type_table.intern(TypeKind::NativeFunction {
+                        args: Vec::new(),
+                        return_ty: this,
+                    });
+                    let location = self.symbol_table.lookup("Vec::new").unwrap().location;
+                    Ok((type_id, location))
+                }
+                "push" => {
+                    let type_id = self.type_table.intern(TypeKind::NativeFunction {
+                        args: vec![this, *element],
+                        return_ty: TypeId::NIL,
+                    });
+                    let location = self.symbol_table.lookup("Vec::push").unwrap().location;
+                    Ok((type_id, location))
+                }
+                "len" => {
+                    let type_id = self.type_table.intern(TypeKind::NativeFunction {
+                        args: vec![this],
+                        return_ty: TypeId::INT,
+                    });
+                    let location = self.symbol_table.lookup("Vec::len").unwrap().location;
+                    Ok((type_id, location))
+                }
                 _ => {
                     panic!()
                 }
@@ -324,19 +361,19 @@ fn analysis_expr(
 
                     let type_segments = analysis_path(semantic, segments)?;
 
-                    let ty = match semantic.symbol_table.lookup(&segment.ident) {
+                    let (ty, loc) = match semantic.symbol_table.lookup(&segment.ident) {
                         Some(symbol) => match &symbol.kind {
-                            scope::SymbolKind::Normal { type_id } => *type_id,
+                            scope::SymbolKind::Normal { type_id } => (*type_id, symbol.location),
                             scope::SymbolKind::GenericFn { func } => {
                                 assert_eq!(segments.len(), 1);
                                 assert!(segment.args.is_empty());
                                 let input_args =
                                     typed_args.iter().map(|x| *x.ty()).collect::<Vec<_>>();
                                 let type_kind = func.monomorphization(&input_args)?;
-                                semantic.type_table.intern(type_kind)
+                                (semantic.type_table.intern(type_kind), symbol.location)
                             }
                         },
-                        None => {
+                        None if segments.len() == 2 => {
                             let (method, this) = segments.split_last().unwrap();
                             let type_id = semantic.type_id(&Type {
                                 segments: this.to_vec(),
@@ -344,22 +381,27 @@ fn analysis_expr(
                             assert!(method.args.is_empty());
                             semantic.method(type_id, &method.ident)?
                         }
+                        None => {
+                            panic!("can not find symbol {:?}", segments);
+                        }
                     };
 
                     type_ast::Expr::Path {
                         segments: type_segments,
+                        location: loc,
                         ty,
                     }
                 }
                 ast::Expr::Member { target, member } => {
                     let target = analysis_expr(semantic, target)?;
                     let target_ty = *target.ty();
-                    let method_ty = semantic.method(target_ty, &member)?;
+                    let (method_ty, location) = semantic.method(target_ty, &member)?;
                     typed_args.insert(0, target);
                     type_ast::Expr::Method {
                         this_ty: target_ty,
                         method_name: member.to_string(),
                         method_ty,
+                        location,
                     }
                 }
                 _ => analysis_expr(semantic, func)?,
@@ -403,15 +445,15 @@ fn analysis_expr(
 
             let target_kind = semantic.type_table.get(*target.ty()).unwrap();
 
-            let ty = match target_kind {
+            let (offset, field) = match target_kind {
                 TypeKind::Struct(id) => {
                     let struct_def = semantic.struct_table.get(*id).unwrap();
                     struct_def
                         .fields
                         .iter()
-                        .find(|x| &x.name == member)
+                        .enumerate()
+                        .find(|(_, x)| &x.name == member)
                         .unwrap()
-                        .type_
                 }
                 _ => {
                     println!("{:?}", expr);
@@ -422,7 +464,8 @@ fn analysis_expr(
             type_ast::Expr::Member {
                 target: Box::new(target),
                 member: member.to_string(),
-                ty,
+                offset,
+                member_ty: field.type_,
             }
         }
         ast::Expr::Struct { struct_ty, fields } => {
@@ -487,14 +530,11 @@ fn analysis_expr(
             assert!(segment.args.is_empty());
 
             println!("{:?}", segments);
+            let symbol = semantic.symbol_table.lookup(&segment.ident).unwrap();
             type_ast::Expr::Path {
                 segments: type_segments,
-                ty: semantic
-                    .symbol_table
-                    .lookup(&segment.ident)
-                    .unwrap()
-                    .ty()
-                    .unwrap(),
+                ty: symbol.ty().unwrap(),
+                location: symbol.location,
             }
         }
     };
@@ -542,11 +582,12 @@ fn analysis_block(
             ast::BlockStmt::Let(let_stmt) => {
                 let expr = analysis_expr(semantic, &let_stmt.expr)?;
 
-                semantic
+                let location = semantic
                     .symbol_table
                     .insert(&let_stmt.var_name, *expr.ty())?;
                 type_ast::BlockStmt::Let(type_ast::LetStmt {
                     var_name: let_stmt.var_name.to_string(),
+                    location,
                     expr,
                 })
             }
@@ -633,15 +674,26 @@ fn analysis_func(
     semantic.symbol_table.enter_scope();
 
     if let Some(this) = this {
-        semantic.symbol_table.insert("self", this)?;
+        let location = semantic.symbol_table.insert("self", this)?;
+
+        let type_arg = type_ast::Arg {
+            name: "self".to_string(),
+            type_: this,
+            location,
+        };
+
+        type_args.push(type_arg);
     }
 
     for arg in &fn_def.args {
+        let type_ = semantic.type_id(&arg.type_)?;
+        let location = semantic.symbol_table.insert(&arg.name, type_)?;
         let type_arg = type_ast::Arg {
             name: arg.name.to_string(),
-            type_: semantic.type_id(&arg.type_)?,
+            type_,
+            location,
         };
-        semantic.symbol_table.insert(&arg.name, type_arg.type_)?;
+
         type_args.push(type_arg);
     }
 
@@ -652,14 +704,25 @@ fn analysis_func(
 
     let typed_body = analysis_block(semantic, &fn_def.body, return_type)?;
 
+    let local_count = semantic.symbol_table.local_count();
+    semantic.symbol_table.exit_scope();
+
+    let idx = semantic
+            .symbol_table
+            .lookup(&fn_def.name)
+            .unwrap()
+            .location
+            .as_global()
+            .unwrap();
+
     let typed_fn_def = type_ast::FunctionDef {
         name: fn_def.name.to_string(),
         args: type_args,
+        local_count,
         return_type,
         body: typed_body,
+        idx,
     };
-
-    semantic.symbol_table.exit_scope();
 
     Ok(typed_fn_def)
 }
