@@ -5,3 +5,4 @@ edition = "2024"
 
 [dependencies]
 gc-arena = "0.5.3"
+slotmap = "1.1.1"

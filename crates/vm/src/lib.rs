@@ -1,4 +1,18 @@
-use std::{error::Error, path::Path, time::Duration};
+mod builtin;
+mod bytecode;
+mod compiler;
+mod mem;
+mod module;
+mod package;
+mod value;
+mod vm;
+mod ir;
+
+pub mod semantic;
+
+pub use vm::Vm;
+
+/*use std::{error::Error, path::Path, time::Duration};
 
 use bytecode::{
     ByteCode,
@@ -166,7 +180,7 @@ impl Vm {
                         }
                         ByteCode::NewStruct { idx, cnt } => {
                             arena.mutate_root(|mc, state| {
-                                state.stack.push(Value::Object(Gc::new(
+                                state.stack.push(Value::Struct(Gc::new(
                                     mc,
                                     Object::new(mc, *idx, *cnt as usize),
                                 )));
@@ -548,3 +562,4 @@ fn check_need_gc(state: &mut State) -> bool {
     }
     false
 }
+*/

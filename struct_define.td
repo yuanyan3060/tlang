@@ -1,7 +1,4 @@
-struct Solution {}
-
-impl Solution {
-    fn video_stitching(clips: Vec<Vec<int>>, time: int) -> int {
+fn video_stitching(clips: Vec<Vec<int>>, time: int) -> int {
         let maxn = Vec::<int>::new();
 
         let i = 0;
@@ -50,7 +47,6 @@ impl Solution {
 
         return ans;
     }
-}
 
 fn push_clip(clips: Vec<Vec<int>>, l: int, r: int) {
     let clip = Vec::<int>::new();
@@ -68,6 +64,6 @@ fn main() {
     push_clip(clips, 1, 9);
     push_clip(clips, 1, 5);
     push_clip(clips, 5, 9);
-    print(Solution::video_stitching(clips, 10));
+    print(video_stitching(clips, 10));
     return;
 }

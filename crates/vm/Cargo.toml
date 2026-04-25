@@ -11,13 +11,16 @@ path = "src/main.rs"
 name = "vm"
 
 [dependencies]
-value = { path = "../value" }
 lex = { path = "../lex" }
 token = { path = "../token" }
+ast = { path = "../ast" }
 parser = { path = "../parser" }
-bytecode = { path = "../bytecode" }
-builtin = { path = "../builtin" }
-gc-arena = "0.5.3"
+#bytecode = { path = "../bytecode" }
+#builtin = { path = "../builtin" }
+
+slotmap = "1.1.1"
+indexmap = "2.14.0"
+anyhow = "1.0.102"
 
 [features]
 print_passes = []
