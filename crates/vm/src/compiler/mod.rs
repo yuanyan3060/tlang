@@ -322,14 +322,6 @@ impl Compiler {
         }
         Ok(codes)
     }
-
-    fn compile_block(
-        &mut self,
-        this: Option<TypeId>,
-        f: &type_ast::FunctionDef,
-    ) -> anyhow::Result<Function> {
-        todo!()
-    }
 }
 
 pub fn compile(program: &ast::Program) -> anyhow::Result<Package> {
@@ -343,7 +335,7 @@ pub fn compile(program: &ast::Program) -> anyhow::Result<Package> {
     let mut entry_function = None;
     for def in &type_program.defs {
         match def {
-            type_ast::Definition::StructDef(struct_def) => {}
+            type_ast::Definition::StructDef(_struct_def) => {}
             type_ast::Definition::FunctionDef(function_def) => {
                 let f = compiler.compile_fn(&function_def)?;
                 let idx = functions.len();

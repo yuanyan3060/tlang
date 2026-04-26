@@ -65,6 +65,7 @@ pub struct SymbolTable {
     global: HashMap<String, Symbol>,
     locals: Vec<HashMap<String, Symbol>>,
     next_local: usize,
+    max_local: usize,
 }
 
 impl SymbolTable {
@@ -73,11 +74,14 @@ impl SymbolTable {
             global: HashMap::new(),
             locals: Vec::new(),
             next_local: 0,
+            max_local: 0
         }
     }
 
-    pub fn local_count(&self) -> usize {
-        self.next_local + 1
+    pub fn take_max_local_count(&mut self) -> usize {
+        let max_local = self.max_local;
+        self.max_local = 0;
+        max_local + 1
     }
 
     pub fn global_count(&self) -> usize {
@@ -110,6 +114,7 @@ impl SymbolTable {
             Some(scope) => {
                 let loc = self.next_local;
                 self.next_local += 1;
+                self.max_local = self.max_local.max(self.next_local);
                 (scope, Location::Local(loc))
             }
             None => {
@@ -138,6 +143,7 @@ impl SymbolTable {
             Some(scope) => {
                 let loc = self.next_local;
                 self.next_local += 1;
+                self.max_local = self.max_local.max(self.next_local);
                 (scope, Location::Local(loc))
             }
             None => {

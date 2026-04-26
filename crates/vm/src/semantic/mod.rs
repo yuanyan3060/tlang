@@ -704,7 +704,7 @@ fn analysis_func(
 
     let typed_body = analysis_block(semantic, &fn_def.body, return_type)?;
 
-    let local_count = semantic.symbol_table.local_count();
+    let local_count = semantic.symbol_table.take_max_local_count();
     semantic.symbol_table.exit_scope();
 
     let idx = semantic
