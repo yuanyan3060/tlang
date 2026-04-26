@@ -2,7 +2,6 @@
 resolver = "3"
 members = [
     "crates/ast", 
-    "crates/compiler",
     "crates/lex",
     "crates/parser",
     "crates/token",
