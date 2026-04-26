@@ -397,15 +397,7 @@ impl IrBuilder {
                 Operand::Variable(dst)
             }
             type_ast::Expr::Path { location, .. } => {
-                let dst = Variable::Temp(self.new_temp());
-
-                let inst = Instruction::Load {
-                    to: dst,
-                    from: Variable::from(*location),
-                };
-                self.emit(inst);
-
-                Operand::Variable(dst)
+                Operand::Variable(Variable::from(*location))
             }
             type_ast::Expr::Method { location, .. } => {
                 let dst = Variable::Temp(self.new_temp());

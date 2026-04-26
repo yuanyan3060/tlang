@@ -15,7 +15,7 @@ fn fib(n: int) -> int {
 fn main() {
     let n = 10000000;
     while(n != 0) {
-        fib(10);
+        fib(40);
         n = n - 1;
     }
 }
