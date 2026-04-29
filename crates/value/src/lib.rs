@@ -16,7 +16,7 @@ impl Value {
             Value::String(gc_handle) => Some(*gc_handle),
             Value::Struct(gc_handle) => Some(*gc_handle),
             Value::Vec(gc_handle) => Some(*gc_handle),
-            _ => None
+            _ => None,
         }
     }
 }
@@ -42,7 +42,6 @@ pub enum GcMark {
     Gray,
     Black,
 }
-
 
 #[derive(Debug)]
 pub enum GcData {

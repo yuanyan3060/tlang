@@ -130,7 +130,6 @@ impl Semantic {
                 "float" => self.type_table.intern(TypeKind::Float),
                 "str" => self.type_table.intern(TypeKind::String),
                 _ => {
-                    println!("{}", segment.ident);
                     let struct_id = self.struct_table.id(&segment.ident).unwrap();
                     self.type_table.intern(TypeKind::Struct(struct_id))
                 }
@@ -355,8 +354,6 @@ fn analysis_expr(
 
             let func = match func.as_ref() {
                 ast::Expr::Path { segments } => {
-                    println!("{:?}", segments);
-
                     let segment = &segments[0];
 
                     let type_segments = analysis_path(semantic, segments)?;
@@ -456,7 +453,6 @@ fn analysis_expr(
                         .unwrap()
                 }
                 _ => {
-                    println!("{:?}", expr);
                     todo!()
                 }
             };
@@ -529,7 +525,6 @@ fn analysis_expr(
             let segment = &segments[0];
             assert!(segment.args.is_empty());
 
-            println!("{:?}", segments);
             let symbol = semantic.symbol_table.lookup(&segment.ident).unwrap();
             type_ast::Expr::Path {
                 segments: type_segments,
@@ -577,7 +572,6 @@ fn analysis_block(
     };
 
     for stmt in &block.statements {
-        println!("{:?}", stmt);
         let stmt = match stmt {
             ast::BlockStmt::Let(let_stmt) => {
                 let expr = analysis_expr(semantic, &let_stmt.expr)?;
@@ -708,12 +702,12 @@ fn analysis_func(
     semantic.symbol_table.exit_scope();
 
     let idx = semantic
-            .symbol_table
-            .lookup(&fn_def.name)
-            .unwrap()
-            .location
-            .as_global()
-            .unwrap();
+        .symbol_table
+        .lookup(&fn_def.name)
+        .unwrap()
+        .location
+        .as_global()
+        .unwrap();
 
     let typed_fn_def = type_ast::FunctionDef {
         name: fn_def.name.to_string(),

@@ -165,9 +165,10 @@ pub enum ByteCode {
         from: Loc,
         to: Loc,
     },
-    JumpIfFalse {
+    Br {
         cond: Loc,
-        offset: u32,
+        then_offset: u32,
+        else_offset: u32,
     },
     Jump {
         offset: u32,

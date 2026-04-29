@@ -1,12 +1,12 @@
 mod builtin;
 mod bytecode;
 pub mod compiler;
+pub mod ir;
 mod mem;
 mod module;
 mod package;
 mod value;
 mod vm;
-pub mod ir;
 
 pub mod semantic;
 

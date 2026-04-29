@@ -1,7 +1,6 @@
-use std::collections::HashSet;
-
 use ast::{BinaryOp, UnaryOp};
 
+use crate::semantic::ty::TypeId;
 use crate::semantic::{scope::Location, type_ast};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -21,7 +20,7 @@ impl From<Location> for Variable {
 }
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
-pub struct Label(pub usize);
+pub struct BlockId(pub usize);
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Operand {
@@ -31,7 +30,6 @@ pub enum Operand {
     ConstInt(i64),
     ConstFloat(f64),
     ConstString(String),
-    Label(Label),
 }
 
 impl Operand {
@@ -107,43 +105,70 @@ pub enum Instruction {
         to: Variable,
     },
 
-    Jump {
-        lable: Label,
-    },
-
-    JumpIfFalse {
-        condition: Operand,
-        lable: Label,
-    },
-
     StoreLocal {
         src: Operand,
         dst: Variable,
     },
+}
 
-    Return {
-        var: Option<Operand>,
-    },
+#[derive(Debug, Clone)]
+pub struct Function {
+    pub name: String,
+    pub args: Vec<TypeId>,
+    pub blocks: Vec<BasicBlock>,
+    pub temp_cnt: usize,
+    pub local_cnt: usize,
+    pub ret: Option<TypeId>,
+}
 
-    Label {
-        label: Label,
+#[derive(Debug, Clone)]
+pub struct BasicBlock {
+    pub id: BlockId,
+    pub insts: Vec<Instruction>,
+    pub term: Terminator,
+}
+
+#[derive(Debug, Clone)]
+pub struct IrBasicBlock {
+    pub id: BlockId,
+    pub insts: Vec<Instruction>,
+    pub term: Option<Terminator>,
+}
+
+#[derive(Debug, Clone)]
+pub enum Terminator {
+    Br {
+        cond: Operand,
+        then_block: BlockId,
+        else_block: BlockId,
     },
+    Jump {
+        block: BlockId,
+    },
+    Ret(Option<Operand>),
 }
 
 pub struct IrBuilder {
     next_temp: usize,
-    next_label: usize,
-    loop_stack: Vec<(Label, Label)>,
-    instructions: Vec<Instruction>,
+    loop_stack: Vec<(BlockId, BlockId)>,
+    blocks: Vec<IrBasicBlock>,
+    curr: BlockId,
 }
 
 impl IrBuilder {
     pub fn new() -> Self {
+        let curr = BlockId(0);
+        let block = IrBasicBlock {
+            id: curr,
+            insts: Vec::new(),
+            term: None,
+        };
+
         Self {
             next_temp: 0,
-            next_label: 0,
             loop_stack: Vec::new(),
-            instructions: Vec::new(),
+            blocks: vec![block],
+            curr,
         }
     }
 
@@ -153,25 +178,41 @@ impl IrBuilder {
         next
     }
 
-    pub fn new_label(&mut self) -> usize {
-        let next = self.next_label;
-        self.next_label += 1;
-        next
+    pub fn new_block(&mut self) -> BlockId {
+        let id = BlockId(self.blocks.len());
+        self.blocks.push(IrBasicBlock {
+            id,
+            insts: Vec::new(),
+            term: None,
+        });
+        id
+    }
+
+    pub fn set_curr(&mut self, id: BlockId) {
+        self.curr = id
     }
 
     pub fn temp_count(&self) -> usize {
         self.next_temp
     }
 
-    pub fn take(self) -> Vec<Instruction> {
-        self.instructions
-    }
-
     pub fn emit(&mut self, inst: Instruction) {
-        self.instructions.push(inst);
+        self.curr_block().insts.push(inst);
     }
 
-    pub fn visit_fn(&mut self, fn_def: &type_ast::FunctionDef) {
+    pub fn curr_block(&mut self) -> &mut IrBasicBlock {
+        &mut self.blocks[self.curr.0]
+    }
+
+    pub fn emit_term(&mut self, term: Terminator) {
+        self.curr_block().term = Some(term)
+    }
+
+    pub fn has_term(&mut self) -> bool {
+        self.curr_block().term.is_some()
+    }
+
+    pub fn visit_fn(mut self, fn_def: &type_ast::FunctionDef) -> Function {
         for arg in fn_def.args.iter().rev() {
             self.emit(Instruction::GetParam {
                 dst: Variable::from(arg.location),
@@ -179,121 +220,153 @@ impl IrBuilder {
         }
 
         self.visit_block(&fn_def.body);
-        println!("{:#?}", self.instructions);
+
+        if !self.has_term() && fn_def.return_type.is_none() {
+            self.emit_term(Terminator::Ret(None));
+        }
+
+        let temp_cnt = self.temp_count();
+        println!("temp_cnt {}", temp_cnt);
+        let mut blocks = Vec::new();
+
+        for block in self.blocks {
+            let block = BasicBlock {
+                id: block.id,
+                insts: block.insts,
+                term: block.term.unwrap(),
+            };
+
+            blocks.push(block);
+        }
+
+        let mut args = Vec::new();
+
+        for arg in &fn_def.args {
+            args.push(arg.type_);
+        }
+        Function {
+            name: fn_def.name.to_string(),
+            args,
+            blocks,
+            temp_cnt,
+            local_cnt: fn_def.local_count,
+            ret: fn_def.return_type,
+        }
     }
 
     pub fn visit_block(&mut self, block: &type_ast::Block) {
         for stmt in &block.statements {
-            self.visit_stmt(stmt);
-        }
-    }
-
-    pub fn visit_stmt(&mut self, stmt: &type_ast::BlockStmt) {
-        match stmt {
-            type_ast::BlockStmt::Let(let_stmt) => {
-                let inst = Instruction::StoreLocal {
-                    src: self.vist_expr(&let_stmt.expr),
-                    dst: Variable::from(let_stmt.location),
-                };
-                self.emit(inst);
-            }
-            type_ast::BlockStmt::Assign(assign_stmt) => match &assign_stmt.target {
-                type_ast::Expr::Index { target, index, .. } => {
-                    let inst = Instruction::SetIndex {
-                        obj: self.vist_expr(&target).as_var().unwrap(),
-                        idx: self.vist_expr(&index),
-                        src: self.vist_expr(&assign_stmt.expr),
-                    };
-                    self.emit(inst);
-                }
-                type_ast::Expr::Member { target, offset, .. } => {
-                    let inst = Instruction::SetMember {
-                        dst: self.vist_expr(target).as_var().unwrap(),
-                        src: self.vist_expr(&assign_stmt.expr),
-                        offset: *offset,
-                    };
-                    self.emit(inst);
-                }
-                type_ast::Expr::Path { location, .. } => {
+            match stmt {
+                type_ast::BlockStmt::Let(let_stmt) => {
                     let inst = Instruction::StoreLocal {
-                        src: self.vist_expr(&assign_stmt.expr),
-                        dst: Variable::from(*location),
+                        src: self.vist_expr(&let_stmt.expr),
+                        dst: Variable::from(let_stmt.location),
                     };
                     self.emit(inst);
                 }
-                _ => todo!(),
-            },
-            type_ast::BlockStmt::Return(return_stmt) => {
-                let var = match &return_stmt.expr {
-                    Some(expr) => Some(self.vist_expr(expr)),
-                    None => None,
-                };
+                type_ast::BlockStmt::Assign(assign_stmt) => match &assign_stmt.target {
+                    type_ast::Expr::Index { target, index, .. } => {
+                        let inst = Instruction::SetIndex {
+                            obj: self.vist_expr(&target).as_var().unwrap(),
+                            idx: self.vist_expr(&index),
+                            src: self.vist_expr(&assign_stmt.expr),
+                        };
+                        self.emit(inst);
+                    }
+                    type_ast::Expr::Member { target, offset, .. } => {
+                        let inst = Instruction::SetMember {
+                            dst: self.vist_expr(target).as_var().unwrap(),
+                            src: self.vist_expr(&assign_stmt.expr),
+                            offset: *offset,
+                        };
+                        self.emit(inst);
+                    }
+                    type_ast::Expr::Path { location, .. } => {
+                        let inst = Instruction::StoreLocal {
+                            src: self.vist_expr(&assign_stmt.expr),
+                            dst: Variable::from(*location),
+                        };
+                        self.emit(inst);
+                    }
+                    _ => todo!(),
+                },
+                type_ast::BlockStmt::Return(return_stmt) => {
+                    let var = match &return_stmt.expr {
+                        Some(expr) => Some(self.vist_expr(expr)),
+                        None => None,
+                    };
 
-                let inst = Instruction::Return { var };
-                self.emit(inst);
-                return;
-            }
-            type_ast::BlockStmt::Expr(expr) => {
-                self.vist_expr(expr);
-            }
-            type_ast::BlockStmt::Block(block) => {
-                for stmt in &block.statements {
-                    self.visit_stmt(stmt);
+                    self.emit_term(Terminator::Ret(var));
+                    return;
                 }
-            }
-            type_ast::BlockStmt::If(if_stmt) => {
-                let lable_else = Label(self.new_label());
-                let lable_end = if if_stmt.else_branch.is_some() {
-                    Label(self.new_label())
-                } else {
-                    lable_else
-                };
-
-                let condition = self.vist_expr(&if_stmt.condition);
-                self.emit(Instruction::JumpIfFalse {
-                    condition,
-                    lable: lable_else,
-                });
-
-                self.visit_block(&if_stmt.then_branch);
-
-                self.emit(Instruction::Jump { lable: lable_end });
-
-                if let Some(else_branch) = &if_stmt.else_branch {
-                    self.emit(Instruction::Label { label: lable_else });
-                    self.visit_block(else_branch);
+                type_ast::BlockStmt::Expr(expr) => {
+                    self.vist_expr(expr);
                 }
+                type_ast::BlockStmt::Block(block) => {
+                    self.visit_block(block);
+                }
+                type_ast::BlockStmt::If(if_stmt) => {
+                    let then_block = self.new_block();
+                    let else_block = self.new_block();
+                    let merge_block = self.new_block();
 
-                self.emit(Instruction::Label { label: lable_end });
-            }
-            type_ast::BlockStmt::While(while_stmt) => {
-                let lable_start = Label(self.new_label());
-                let lable_end = Label(self.new_label());
+                    let cond = self.vist_expr(&if_stmt.condition);
+                    self.emit_term(Terminator::Br {
+                        cond,
+                        then_block,
+                        else_block,
+                    });
 
-                self.loop_stack.push((lable_start, lable_end));
+                    self.set_curr(then_block);
+                    self.visit_block(&if_stmt.then_branch);
+                    if !self.has_term() {
+                        self.emit_term(Terminator::Jump { block: merge_block });
+                    }
 
-                self.emit(Instruction::Label { label: lable_start });
+                    self.set_curr(else_block);
+                    if let Some(else_branch) = &if_stmt.else_branch {
+                        self.visit_block(else_branch);
+                    }
+                    if !self.has_term() {
+                        self.emit_term(Terminator::Jump { block: merge_block });
+                    }
 
-                let condition = self.vist_expr(&while_stmt.condition);
-                self.emit(Instruction::JumpIfFalse {
-                    condition,
-                    lable: lable_end,
-                });
+                    self.set_curr(merge_block);
+                }
+                type_ast::BlockStmt::While(while_stmt) => {
+                    let cond = self.new_block();
+                    let body = self.new_block();
+                    let exit = self.new_block();
 
-                self.visit_block(&while_stmt.block);
+                    self.emit_term(Terminator::Jump { block: cond });
 
-                self.emit(Instruction::Jump { lable: lable_start });
+                    self.set_curr(cond);
+                    let condition = self.vist_expr(&while_stmt.condition);
+                    self.emit_term(Terminator::Br {
+                        cond: condition,
+                        then_block: body,
+                        else_block: exit,
+                    });
 
-                self.emit(Instruction::Label { label: lable_end });
-                self.loop_stack.pop();
-            }
-            type_ast::BlockStmt::Break => {
-                let (_, end) = self.loop_stack.pop().unwrap();
-                self.emit(Instruction::Jump { lable: end });
-            }
-            type_ast::BlockStmt::Continue => {
-                let (start, _) = self.loop_stack.pop().unwrap();
-                self.emit(Instruction::Jump { lable: start });
+                    self.set_curr(body);
+                    self.loop_stack.push((cond, exit));
+                    self.visit_block(&while_stmt.block);
+                    self.loop_stack.pop();
+
+                    if !self.has_term() {
+                        self.emit_term(Terminator::Jump { block: cond });
+                    }
+
+                    self.set_curr(exit);
+                }
+                type_ast::BlockStmt::Break => {
+                    let (_, exit) = self.loop_stack.last().unwrap();
+                    self.emit_term(Terminator::Jump { block: *exit });
+                }
+                type_ast::BlockStmt::Continue => {
+                    let (cond, _) = self.loop_stack.last().unwrap();
+                    self.emit_term(Terminator::Jump { block: *cond });
+                }
             }
         }
     }
@@ -396,9 +469,7 @@ impl IrBuilder {
                 }
                 Operand::Variable(dst)
             }
-            type_ast::Expr::Path { location, .. } => {
-                Operand::Variable(Variable::from(*location))
-            }
+            type_ast::Expr::Path { location, .. } => Operand::Variable(Variable::from(*location)),
             type_ast::Expr::Method { location, .. } => {
                 let dst = Variable::Temp(self.new_temp());
 
@@ -412,352 +483,4 @@ impl IrBuilder {
             }
         }
     }
-}
-
-pub fn optimize(mut codes: Vec<Instruction>) -> Vec<Instruction> {
-    let passes = [pass2, pass3, dce_pass, inline_arithmetic_pass];
-    loop {
-        let mut changed = false;
-        for pass in passes {
-            let (new_codes, new_changed) = pass(&codes);
-            if new_changed {
-                changed = true;
-            }
-            println!("优化: {}", codes.len() - new_codes.len());
-            codes = new_codes;
-        }
-        if !changed {
-            break;
-        } // 直到不再有变动
-    }
-    println!("优化后 {:#?}", codes);
-    codes
-}
-
-fn pass2(input: &[Instruction]) -> (Vec<Instruction>, bool) {
-    let mut output = Vec::new();
-    let mut i = 0;
-    let mut changed = false;
-
-    while i < input.len() {
-        // 模式匹配：检查当前和下一条指令
-        if i + 1 < input.len() {
-            match (&input[i], &input[i + 1]) {
-                // 优化 1: 消除重复 Load (local -> temp -> local)
-                (
-                    Instruction::Load { from: src, to: tmp },
-                    Instruction::Load {
-                        from: tmp2,
-                        to: dst,
-                    },
-                ) if tmp == tmp2 => {
-                    output.push(Instruction::Load {
-                        from: *src,
-                        to: *dst,
-                    });
-                    i += 2;
-                    changed = true;
-                    continue;
-                }
-
-                // 优化 2: 运算操作数内联 (Load temp + BinaryOp using temp)
-                (
-                    Instruction::Load { from: src, to: tmp },
-                    Instruction::BinaryOp {
-                        dst,
-                        op,
-                        left,
-                        right,
-                    },
-                ) if Operand::Variable(*tmp) == *left => {
-                    output.push(Instruction::BinaryOp {
-                        dst: *dst,
-                        op: *op,
-                        left: Operand::Variable(*src), // 直接用 src 替换 tmp
-                        right: right.clone(),
-                    });
-                    i += 2;
-                    changed = true;
-                    continue;
-                }
-
-                (
-                    Instruction::Load {
-                        from: from0,
-                        to: Variable::Temp(to0),
-                    },
-                    Instruction::Load {
-                        from: Variable::Temp(from1),
-                        to: t01,
-                    },
-                ) if to0 == from1 => {
-                    output.push(Instruction::Load {
-                        from: *from0,
-                        to: *t01,
-                    });
-                    i += 2;
-                    changed = true;
-                    continue;
-                }
-
-                (
-                    Instruction::Load {
-                        from: from0,
-                        to: Variable::Temp(to0),
-                    },
-                    Instruction::Call {
-                        dst,
-                        func: Operand::Variable(Variable::Temp(func)),
-                        param_cnt,
-                    },
-                ) if to0 == func => {
-                    output.push(Instruction::Call {
-                        dst: *dst,
-                        func: Operand::Variable(*from0),
-                        param_cnt: *param_cnt,
-                    });
-                    i += 2;
-                    changed = true;
-                    continue;
-                }
-
-                (
-                    Instruction::Load {
-                        from: from0,
-                        to: Variable::Temp(to0),
-                    },
-                    Instruction::Return { var: Some(Operand::Variable(Variable::Temp(r))) },
-                ) if to0 == r => {
-                    output.push(Instruction::Return { var: Some(Operand::Variable(*from0)) });
-                    i += 2;
-                    changed = true;
-                    continue;
-                }
-
-                (
-                    Instruction::Load {
-                        from: from0,
-                        to: Variable::Temp(to0),
-                    },
-                    Instruction::StoreLocal {
-                        src: Operand::Variable(Variable::Temp(src)),
-                        dst,
-                    },
-                ) if to0 == src => {
-                    output.push(Instruction::Load {
-                        from: *from0,
-                        to: *dst,
-                    });
-                    i += 2;
-                    changed = true;
-                    continue;
-                }
-
-                // ... 其他模式 ...
-                _ => {}
-            }
-        }
-
-        output.push(input[i].clone());
-        i += 1;
-    }
-    (output, changed)
-}
-
-fn pass3(input: &[Instruction]) -> (Vec<Instruction>, bool) {
-    let mut output = Vec::new();
-    let mut i = 0;
-    let mut changed = false;
-
-    while i < input.len() {
-        // 模式匹配：检查当前和下一条指令
-        if i + 2 < input.len() {
-            match (&input[i], &input[i + 1], &input[i + 2]) {
-                (
-                    Instruction::Load {
-                        from: from0,
-                        to: Variable::Temp(to0),
-                    },
-                    Instruction::Load {
-                        from: from1,
-                        to: Variable::Temp(to1),
-                    },
-                    Instruction::BinaryOp {
-                        dst,
-                        op,
-                        left: Operand::Variable(Variable::Temp(left)),
-                        right: Operand::Variable(Variable::Temp(right)),
-                    },
-                ) if (left == to0) && (right == to1) => {
-                    output.push(Instruction::BinaryOp {
-                        dst: *dst,
-                        op: *op,
-                        left: Operand::Variable(*from0),
-                        right: Operand::Variable(*from1),
-                    });
-                    i += 3;
-                    changed = true;
-                    continue;
-                }
-
-                // ... 其他模式 ...
-                _ => {}
-            }
-        }
-
-        output.push(input[i].clone());
-        i += 1;
-    }
-    (output, changed)
-}
-
-fn dce_pass(codes: &[Instruction]) -> (Vec<Instruction>, bool) {
-    let live_vars = get_live_variables(&codes);
-    let mut changed = false;
-
-    let optimized_codes = codes
-        .into_iter()
-        .filter(|inst| {
-            match inst {
-                // 只有当目标变量不在 live_vars 中，且指令没有副作用时，才返回 false (删除)
-                Instruction::Load { to, .. }
-                | Instruction::BinaryOp { dst: to, .. }
-                | Instruction::UnaryOp { dst: to, .. }
-                | Instruction::NewObject { dst: to, .. }
-                | Instruction::Index { dst: to, .. }
-                | Instruction::Member { dst: to, .. }
-                | Instruction::StoreLocal { dst: to, .. } => {
-                    let is_dead = !live_vars.contains(to);
-                    if is_dead {
-                        changed = true;
-                        return false; // 丢弃这条指令
-                    }
-                }
-                // 注意：Call, SetIndex, SetMember 等具有副作用，即使结果没被用也要保留
-                _ => {}
-            }
-            true
-        })
-        .cloned()
-        .collect();
-
-    (optimized_codes, changed)
-}
-
-fn get_live_variables(codes: &[Instruction]) -> HashSet<Variable> {
-    let mut live_vars = HashSet::new();
-
-    for inst in codes {
-        match inst {
-            // 所有读取 Operand 的地方
-            Instruction::BinaryOp { left, right, .. } => {
-                add_operand_to_live(&mut live_vars, left);
-                add_operand_to_live(&mut live_vars, right);
-            }
-            Instruction::UnaryOp { src, .. }
-            | Instruction::StoreLocal { src, .. }
-            | Instruction::Param { src }
-            | Instruction::SetIndex { src, .. }
-            | Instruction::SetMember { src, .. }
-            | Instruction::Index { src, .. }
-            | Instruction::Member { src, .. } => {
-                add_operand_to_live(&mut live_vars, src);
-            }
-            Instruction::Return { var: Some(src) } => {
-                add_operand_to_live(&mut live_vars, src);
-            }
-            Instruction::Load { from, .. } => {
-                live_vars.insert(*from);
-            }
-            Instruction::JumpIfFalse { condition, .. } => {
-                add_operand_to_live(&mut live_vars, condition);
-            }
-            Instruction::Call { func, .. } => {
-                add_operand_to_live(&mut live_vars, func);
-            }
-            _ => {} // 其他指令如 Jump, Label 不产生读取
-        }
-    }
-    live_vars
-}
-
-fn add_operand_to_live(set: &mut HashSet<Variable>, op: &Operand) {
-    if let Operand::Variable(v) = op {
-        set.insert(*v);
-    }
-}
-
-fn inline_arithmetic_pass(insts: &[Instruction]) -> (Vec<Instruction>, bool) {
-    let mut output = Vec::new();
-    let mut i = 0;
-    let mut changed = false;
-
-    while i < insts.len() {
-        let current = &insts[i];
-
-        // --- 尝试匹配 模式 B: BinaryOp + StoreLocal ---
-        if i + 1 < insts.len() {
-            if let Instruction::BinaryOp {
-                dst: t_dst,
-                op,
-                left,
-                right,
-            } = current
-            {
-                if let Instruction::StoreLocal {
-                    src: Operand::Variable(t_src),
-                    dst: final_dst,
-                } = &insts[i + 1]
-                {
-                    if t_dst == t_src {
-                        // 发现模式！合并为一条指令
-                        output.push(Instruction::BinaryOp {
-                            dst: *final_dst,
-                            op: *op,
-                            left: left.clone(),
-                            right: right.clone(),
-                        });
-                        i += 2; // 跳过这两条，处理下一组
-                        changed = true;
-                        continue;
-                    }
-                }
-            }
-        }
-
-        // --- 尝试匹配 模式 A: Load + BinaryOp (处理左操作数) ---
-        if i + 1 < insts.len() {
-            if let Instruction::Load {
-                from,
-                to: t_load_to,
-            } = current
-            {
-                if let Instruction::BinaryOp {
-                    dst,
-                    op,
-                    left: Operand::Variable(t_op_left),
-                    right,
-                } = &insts[i + 1]
-                {
-                    if t_load_to == t_op_left {
-                        output.push(Instruction::BinaryOp {
-                            dst: *dst,
-                            op: *op,
-                            left: Operand::Variable(*from), // 直接内联源变量
-                            right: right.clone(),
-                        });
-                        i += 2;
-                        changed = true;
-                        continue;
-                    }
-                }
-            }
-        }
-
-        // 没有匹配到优化模式，原样保留
-        output.push(current.clone());
-        i += 1;
-    }
-
-    (output, changed)
 }

@@ -102,7 +102,6 @@ impl GenericFn {
         let mut bounds = vec![None; self.args.len()];
 
         for idx in 0..self.args.len() {
-            println!("{}", idx);
             let arg = &self.args[idx];
             let input = input_args[idx];
 
@@ -126,7 +125,7 @@ impl GenericFn {
         let return_ty = match self.return_ty {
             Some(TypeSlot::Static(type_id)) => type_id,
             Some(TypeSlot::Dyn(generic_type)) => bounds[generic_type.0 as usize].unwrap(),
-            None => TypeId::NIL
+            None => TypeId::NIL,
         };
 
         Ok(TypeKind::NativeFunction { args, return_ty })
@@ -135,7 +134,7 @@ impl GenericFn {
 
 #[derive(Debug)]
 pub enum GenericType {
-    Vec
+    Vec,
 }
 
 impl GenericType {
@@ -144,9 +143,7 @@ impl GenericType {
             GenericType::Vec => {
                 assert_eq!(param.len(), 1);
                 Ok(TypeKind::Vec { element: param[0] })
-            },
+            }
         }
-
-        
     }
 }

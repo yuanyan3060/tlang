@@ -74,7 +74,7 @@ impl SymbolTable {
             global: HashMap::new(),
             locals: Vec::new(),
             next_local: 0,
-            max_local: 0
+            max_local: 0,
         }
     }
 
@@ -138,7 +138,11 @@ impl SymbolTable {
         Ok(location)
     }
 
-    pub fn insert_generic_fn(&mut self, name: &str, func: GenericFn) -> Result<Location, SemanticError> {
+    pub fn insert_generic_fn(
+        &mut self,
+        name: &str,
+        func: GenericFn,
+    ) -> Result<Location, SemanticError> {
         let (scope, location) = match self.locals.last_mut() {
             Some(scope) => {
                 let loc = self.next_local;

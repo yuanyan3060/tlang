@@ -46,7 +46,7 @@ pub struct FunctionDef {
     pub return_type: Option<TypeId>,
     pub local_count: usize,
     pub body: Block,
-    pub idx: usize
+    pub idx: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -109,35 +109,35 @@ pub struct WhileStmt {
 pub enum Expr {
     Literal {
         value: Literal,
-        ty: TypeId
+        ty: TypeId,
     },
     Unary {
         op: UnaryOp,
         expr: Box<Expr>,
-        ty: TypeId
+        ty: TypeId,
     },
 
     Binary {
         left: Box<Expr>,
         op: BinaryOp,
         right: Box<Expr>,
-        ty: TypeId
+        ty: TypeId,
     },
     Call {
         func: Box<Expr>,
         args: Vec<Expr>,
-        ty: TypeId
+        ty: TypeId,
     },
     Index {
         target: Box<Expr>,
         index: Box<Expr>,
-        ty: TypeId
+        ty: TypeId,
     },
     Member {
         target: Box<Expr>,
         member: String,
         offset: usize,
-        member_ty: TypeId
+        member_ty: TypeId,
     },
     Struct {
         struct_ty: TypeId,
@@ -146,7 +146,7 @@ pub enum Expr {
     Path {
         segments: Vec<PathSegment>,
         location: Location,
-        ty: TypeId
+        ty: TypeId,
     },
     Method {
         this_ty: TypeId,
@@ -159,15 +159,15 @@ pub enum Expr {
 impl Expr {
     pub fn ty(&self) -> &TypeId {
         match self {
-            Expr::Literal { ty, ..  } => ty,
-            Expr::Unary { ty, ..  } => ty,
-            Expr::Binary { ty, ..  } => ty,
-            Expr::Call { ty, ..  } => ty,
-            Expr::Index { ty, ..  } => ty,
-            Expr::Member{ member_ty: ty, ..  } => ty,
-            Expr::Struct { struct_ty, ..  } => struct_ty,
-            Expr::Path { ty, ..  } => ty,
-            Expr::Method { method_ty, .. } => method_ty
+            Expr::Literal { ty, .. } => ty,
+            Expr::Unary { ty, .. } => ty,
+            Expr::Binary { ty, .. } => ty,
+            Expr::Call { ty, .. } => ty,
+            Expr::Index { ty, .. } => ty,
+            Expr::Member { member_ty: ty, .. } => ty,
+            Expr::Struct { struct_ty, .. } => struct_ty,
+            Expr::Path { ty, .. } => ty,
+            Expr::Method { method_ty, .. } => method_ty,
         }
     }
 }

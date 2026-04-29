@@ -312,14 +312,20 @@ impl Vm {
                             let from = self.get_var(*from);
                             self.set_var(*to, from);
                         }
-                        ByteCode::JumpIfFalse { cond, offset } => {
+                        ByteCode::Br {
+                            cond,
+                            then_offset,
+                            else_offset,
+                        } => {
                             let cond = self.get_var(*cond);
                             let cond = match cond {
                                 Value::Bool(b) => b,
                                 _ => unreachable!(),
                             };
-                            if !cond {
-                                idx = *offset as usize
+                            if cond {
+                                idx = *then_offset as usize
+                            } else {
+                                idx = *else_offset as usize
                             }
                         }
                         ByteCode::Jump { offset } => idx = *offset as usize,
@@ -379,7 +385,6 @@ impl Vm {
                             if let Some(src) = src {
                                 let val = self.get_var(*src);
                                 ret = val;
-                                self.mem.stack.push(val);
                             }
                             break;
                         }

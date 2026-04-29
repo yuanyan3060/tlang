@@ -8,25 +8,29 @@ pub struct StructId(u64);
 
 pub struct StructTable {
     ids: HashMap<String, StructId>,
-    struct_defs: Vec<StructDef>
+    struct_defs: Vec<StructDef>,
 }
 
 impl StructTable {
     pub fn new() -> Self {
-        Self { ids: HashMap::new(), struct_defs: Vec::new() }
+        Self {
+            ids: HashMap::new(),
+            struct_defs: Vec::new(),
+        }
     }
 
     pub fn insert(&mut self, def: StructDef) -> Result<StructId, SemanticError> {
         if self.ids.contains_key(&def.name) {
-            return Err(SemanticError::DuplicateDef { name: def.name.to_string() });
+            return Err(SemanticError::DuplicateDef {
+                name: def.name.to_string(),
+            });
         }
 
         let id = StructId(self.struct_defs.len() as u64);
         self.ids.insert(def.name.to_string(), id);
         self.struct_defs.push(def);
-        
+
         Ok(id)
-        
     }
 
     pub fn get(&self, id: StructId) -> Option<&StructDef> {

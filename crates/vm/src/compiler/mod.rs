@@ -4,7 +4,7 @@ use indexmap::IndexSet;
 use ordered_float::OrderedFloat;
 
 use crate::bytecode::{ByteCode, Loc};
-use crate::ir::{Instruction, IrBuilder, Operand, optimize};
+use crate::ir::{Instruction, IrBuilder, Operand, Terminator};
 use crate::package::{Function, Package};
 use crate::semantic::structs::StructTable;
 use crate::semantic::ty::{TypeId, TypeTable};
@@ -44,21 +44,73 @@ impl Compiler {
     }
 
     fn compile_fn(&mut self, f: &type_ast::FunctionDef) -> anyhow::Result<Function> {
-        let mut ir_builder = IrBuilder::new();
-        ir_builder.visit_fn(f);
-        let temp_var_cnt = ir_builder.temp_count();
-        let irs = ir_builder.take();
-        let irs = optimize(irs);
+        let ir_builder = IrBuilder::new();
+        let f = ir_builder.visit_fn(f);
 
-        let codes = self.compile_irs(&irs)?;
+        println!("blocks {:#?}", f.blocks);
+        let mut codes = Vec::new();
+        let mut block_starts = HashMap::new();
+        for block in f.blocks {
+            block_starts.insert(block.id.0 as u32, codes.len() as u32);
+            self.compile_irs(&block.insts, &mut codes)?;
 
-        println!("111111111 {} {:#?}", f.name, codes);
+            match block.term {
+                Terminator::Br {
+                    cond,
+                    then_block,
+                    else_block,
+                } => match cond {
+                    Operand::Variable(variable) => {
+                        codes.push(ByteCode::Br {
+                            cond: Loc::from(variable),
+                            then_offset: then_block.0 as u32,
+                            else_offset: else_block.0 as u32,
+                        });
+                    }
+                    Operand::ConstBool(b) => {
+                        if b {
+                            codes.push(ByteCode::Jump {
+                                offset: then_block.0 as u32,
+                            });
+                        } else {
+                            codes.push(ByteCode::Jump {
+                                offset: else_block.0 as u32,
+                            });
+                        }
+                    }
+                    _ => unreachable!(),
+                },
+                Terminator::Jump { block } => codes.push(ByteCode::Jump {
+                    offset: block.0 as u32,
+                }),
+                Terminator::Ret(operand) => codes.push(ByteCode::Return {
+                    src: operand.as_ref().map(|x| self.operand_to_loc(&x)),
+                }),
+            }
+        }
+
+        for code in &mut codes {
+            match code {
+                ByteCode::Br {
+                    then_offset,
+                    else_offset,
+                    ..
+                } => {
+                    *then_offset = block_starts[then_offset];
+                    *else_offset = block_starts[else_offset];
+                }
+                ByteCode::Jump { offset } => *offset = block_starts[offset],
+                _ => continue,
+            }
+        }
+
+        println!("compile {} {:#?}", f.name, codes);
 
         Ok(Function::Custom {
             name: f.name.to_string(),
             codes,
-            local_var_cnt: f.local_count as u32,
-            temp_var_cnt: temp_var_cnt as u32,
+            local_var_cnt: f.local_cnt as u32,
+            temp_var_cnt: f.temp_cnt as u32,
         })
     }
 
@@ -81,14 +133,14 @@ impl Compiler {
             Operand::ConstInt(i) => self.intern_const(ConstValue::Int(*i)),
             Operand::ConstFloat(f) => self.intern_const(ConstValue::Float((*f).into())),
             Operand::ConstString(s) => self.intern_const(ConstValue::String(s.to_string())),
-            Operand::Label(_) => unreachable!(),
         }
     }
 
-    fn compile_irs(&mut self, irs: &[Instruction]) -> anyhow::Result<Vec<ByteCode>> {
-        let mut label_map = HashMap::new();
-        let mut codes = Vec::new();
-
+    fn compile_irs(
+        &mut self,
+        irs: &[Instruction],
+        codes: &mut Vec<ByteCode>,
+    ) -> anyhow::Result<()> {
         for ir in irs {
             match ir {
                 Instruction::BinaryOp {
@@ -275,52 +327,16 @@ impl Compiler {
                         to: Loc::from(*to),
                     });
                 }
-                Instruction::Jump { lable } => {
-                    codes.push(ByteCode::Jump {
-                        offset: lable.0 as u32,
-                    });
-                }
-                Instruction::JumpIfFalse { condition, lable } => match condition {
-                    Operand::Variable(variable) => {
-                        codes.push(ByteCode::JumpIfFalse {
-                            cond: Loc::from(*variable),
-                            offset: lable.0 as u32,
-                        });
-                    }
-                    Operand::ConstBool(b) => {
-                        if *b {
-                            codes.push(ByteCode::Jump {
-                                offset: lable.0 as u32,
-                            });
-                        }
-                    }
-                    _ => unreachable!(),
-                },
                 Instruction::StoreLocal { src, dst } => {
                     codes.push(ByteCode::Load {
                         from: self.operand_to_loc(src),
                         to: Loc::from(*dst),
                     });
                 }
-                Instruction::Return { var } => {
-                    codes.push(ByteCode::Return {
-                        src: var.as_ref().map(|x| self.operand_to_loc(&x)),
-                    });
-                }
-                Instruction::Label { label } => {
-                    label_map.insert(label.0 as u32, codes.len() as u32);
-                }
             }
         }
 
-        for code in &mut codes {
-            match code {
-                ByteCode::JumpIfFalse { offset, .. } => *offset = label_map[*&offset],
-                ByteCode::Jump { offset } => *offset = label_map[*&offset],
-                _ => continue,
-            }
-        }
-        Ok(codes)
+        Ok(())
     }
 }
 
@@ -369,5 +385,11 @@ pub fn compile(program: &ast::Program) -> anyhow::Result<Package> {
 
     let constants = compiler.consts.into_iter().collect();
 
-    Ok(Package { constants, global, structs: semantic.struct_table, functions, entry_function: entry_function.unwrap() })
+    Ok(Package {
+        constants,
+        global,
+        structs: semantic.struct_table,
+        functions,
+        entry_function: entry_function.unwrap(),
+    })
 }
