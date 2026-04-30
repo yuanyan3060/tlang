@@ -385,7 +385,11 @@ impl IrBuilder {
                 Operand::Variable(dst)
             }
             type_ast::Expr::Binary {
-                left, op, right, ty, ..
+                left,
+                op,
+                right,
+                ty,
+                ..
             } => {
                 let dst = Variable::Temp(self.add_temp(*ty));
                 let inst = Instruction::BinaryOp {
@@ -415,7 +419,9 @@ impl IrBuilder {
                 self.emit(inst);
                 Operand::Variable(dst)
             }
-            type_ast::Expr::Index { target, index, ty, .. } => {
+            type_ast::Expr::Index {
+                target, index, ty, ..
+            } => {
                 let dst = Variable::Temp(self.add_temp(*ty));
 
                 let inst = Instruction::Index {
@@ -446,7 +452,9 @@ impl IrBuilder {
                 self.emit(inst);
                 Operand::Variable(dst)
             }
-            type_ast::Expr::Struct { fields, struct_ty, .. } => {
+            type_ast::Expr::Struct {
+                fields, struct_ty, ..
+            } => {
                 let dst = Variable::Temp(self.add_temp(*struct_ty));
                 let inst = Instruction::NewObject {
                     dst,
@@ -465,7 +473,11 @@ impl IrBuilder {
                 Operand::Variable(dst)
             }
             type_ast::Expr::Path { location, .. } => Operand::Variable(Variable::from(*location)),
-            type_ast::Expr::Method { location, method_ty, .. } => {
+            type_ast::Expr::Method {
+                location,
+                method_ty,
+                ..
+            } => {
                 let dst = Variable::Temp(self.add_temp(*method_ty));
 
                 let inst = Instruction::Load {

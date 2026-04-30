@@ -5,7 +5,7 @@ use walrus::ValType;
 use walrus::ir::Value;
 
 use crate::compiler::ConstValue;
-use crate::ir::{Instruction, IrBuilder, Operand, Terminator, Variable};
+use crate::ir::{self, Instruction, IrBuilder, Operand, Terminator, Variable};
 use crate::semantic::functions::FunctionTable;
 use crate::semantic::scope::SymbolTable;
 use crate::semantic::structs::StructTable;
@@ -45,7 +45,6 @@ impl Compiler {
     fn compile_fn(&mut self, f: &type_ast::FunctionDef) -> anyhow::Result<walrus::FunctionId> {
         let ir_builder = IrBuilder::new();
         let ir_f = ir_builder.visit_fn(f);
-        println!("{:#?}", ir_f);
         let mut param_types = Vec::new();
         for arg in ir_f.args {
             let param = self.wasm_type(arg);
@@ -60,15 +59,12 @@ impl Compiler {
         let mut builder =
             walrus::FunctionBuilder::new(&mut self.module.types, &param_types, &results);
 
-        let mut block_id_map = HashMap::new();
-        let mut block_ids = Vec::new();
+        let mut func_body = builder.func_body();
 
-        for block in &ir_f.blocks {
-            let seq_id = builder.dangling_instr_seq(None).id();
-            block_id_map.insert(block.id, seq_id);
-            block_ids.push(seq_id);
-            builder.func_body().instr(walrus::ir::Block { seq: seq_id });
-        }
+        let pc = self.module.locals.add(ValType::I32);
+        func_body.i32_const(0);
+        func_body.local_set(pc);
+
         let mut locals = Vec::new();
         for type_id in &ir_f.locals {
             let id = self.module.locals.add(self.wasm_type(*type_id));
@@ -83,10 +79,35 @@ impl Compiler {
 
         let locals = Locals { locals, temps };
 
+        let mut block_id_map = HashMap::new();
+        let mut block_ids = Vec::new();
+
+        let exit = builder.dangling_instr_seq(None).id();
+
+        for block in &ir_f.blocks {
+            let seq_id = builder.dangling_instr_seq(None).id();
+            block_id_map.insert(block.id, seq_id);
+            block_ids.push(seq_id);
+        }
+
+        let dispatch_outer = builder.dangling_instr_seq(None).id();
+
+        let mut dispatch_inner = builder.dangling_instr_seq(None);
+        let mut br_tables = block_ids.clone();
+        br_tables.insert(0, dispatch_inner.id());
+        dispatch_inner
+            .local_get(pc)
+            .br_table(br_tables.into_boxed_slice(), exit)
+            .id();
+        let dispatch_inner = dispatch_inner.id();
+
+        let mut prev = dispatch_inner;
         for (idx, block) in ir_f.blocks.iter().enumerate() {
             let seq_id = block_ids[idx];
-            
+
             let b = &mut builder.instr_seq(seq_id);
+            b.instr(walrus::ir::Block { seq: prev });
+            prev = b.id();
 
             for ir in &block.insts {
                 match ir {
@@ -168,12 +189,17 @@ impl Compiler {
                     then_block,
                     else_block,
                 } => {
+                    b.i32_const(then_block.0 as i32);
+                    b.i32_const(else_block.0 as i32);
                     locals.get(b, cond);
-                    b.br_if(block_id_map[then_block]);
-                    b.br(block_id_map[else_block]);
+                    b.select(Some(ValType::I32));
+                    b.local_set(pc);
+                    b.br(dispatch_outer);
                 }
                 Terminator::Jump { block } => {
-                    b.br(block_id_map[block]);
+                    b.i32_const(block.0 as i32);
+                    b.local_set(pc);
+                    b.br(dispatch_outer);
                 }
                 Terminator::Ret(operand) => match operand {
                     Some(operand) => {
@@ -187,10 +213,32 @@ impl Compiler {
             }
         }
 
-        builder.func_body().unreachable();
+        builder
+            .instr_seq(dispatch_outer)
+            .instr(walrus::ir::Block { seq: prev })
+            .id();
 
-        let id = builder.finish(locals.locals, &mut self.module.funcs);
-        println!("{:#?}", self.module.funcs.get(id));
+        builder
+            .instr_seq(exit)
+            .instr(walrus::ir::Loop {
+                seq: dispatch_outer,
+            })
+            .unreachable();
+
+        builder
+            .func_body()
+            .instr(walrus::ir::Block { seq: exit })
+            .unreachable();
+
+        let mut args = Vec::new();
+        for arg in &f.args {
+            let arg = match arg.location {
+                crate::semantic::scope::Location::Local(idx) => locals.locals[idx],
+                crate::semantic::scope::Location::Global(_) => todo!(),
+            };
+            args.push(arg);
+        }
+        let id = builder.finish(args, &mut self.module.funcs);
         Ok(id)
     }
 }

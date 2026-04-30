@@ -1,7 +1,13 @@
 fn fib(n: int) -> int {
-   if n > 0 {
-      return n;
-   }
+    let a = 0;
+    let b = 1;
 
-   return 0;
+    while(n > 0) {
+        let temp = a;
+        a = b;
+        b = temp + b;
+        n = n - 1;
+    }
+
+    return a;
 }

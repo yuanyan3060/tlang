@@ -4,10 +4,10 @@ const fs = require("fs");
   const bytes = fs.readFileSync("output.wasm");
   const { instance } = await WebAssembly.instantiate(bytes);
 
-  const inputs = [0n, 1n, 5n, 10n];
+  const inputs = [30n];
   for (const n of inputs) {
     const result = instance.exports.fib(n);
-    console.log(`run(${n}) = ${result}`);
+    console.log(`fib(${n}) = ${result}`);
   }
 })();
 
