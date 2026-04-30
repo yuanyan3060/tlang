@@ -44,7 +44,7 @@ pub struct FunctionDef {
     pub name: String,
     pub args: Vec<Arg>,
     pub return_type: Option<TypeId>,
-    pub local_count: usize,
+    pub locals: Vec<TypeId>,
     pub body: Block,
     pub idx: usize,
 }

@@ -22,6 +22,7 @@ slotmap = "1.1.1"
 indexmap = "2.14.0"
 anyhow = "1.0.102"
 ordered-float = "5.3.0"
+walrus = "0.26.1"
 
 [features]
 print_passes = []

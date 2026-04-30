@@ -63,43 +63,37 @@ impl Symbol {
 
 pub struct SymbolTable {
     global: HashMap<String, Symbol>,
-    locals: Vec<HashMap<String, Symbol>>,
-    next_local: usize,
-    max_local: usize,
+    scopes: Vec<HashMap<String, Symbol>>,
+    locals: Vec<TypeId>,
 }
 
 impl SymbolTable {
     pub fn new() -> Self {
         Self {
             global: HashMap::new(),
+            scopes: Vec::new(),
             locals: Vec::new(),
-            next_local: 0,
-            max_local: 0,
         }
-    }
-
-    pub fn take_max_local_count(&mut self) -> usize {
-        let max_local = self.max_local;
-        self.max_local = 0;
-        max_local + 1
     }
 
     pub fn global_count(&self) -> usize {
         self.global.len()
     }
 
+    pub fn take_locals(&mut self) -> Vec<TypeId> {
+        std::mem::take(&mut self.locals)
+    }
+
     pub fn enter_scope(&mut self) {
-        self.locals.push(HashMap::new());
+        self.scopes.push(HashMap::new());
     }
 
     pub fn exit_scope(&mut self) {
-        if let Some(local) = self.locals.pop() {
-            self.next_local -= local.len()
-        }
+        self.scopes.pop();
     }
 
     pub fn lookup(&self, name: &str) -> Option<&Symbol> {
-        let scopes = self.locals.iter().chain([&self.global]).rev();
+        let scopes = self.scopes.iter().chain([&self.global]).rev();
 
         for scope in scopes {
             if let Some(ident) = scope.get(name) {
@@ -110,11 +104,10 @@ impl SymbolTable {
     }
 
     pub fn insert(&mut self, name: &str, type_id: TypeId) -> Result<Location, SemanticError> {
-        let (scope, location) = match self.locals.last_mut() {
+        let (scope, location) = match self.scopes.last_mut() {
             Some(scope) => {
-                let loc = self.next_local;
-                self.next_local += 1;
-                self.max_local = self.max_local.max(self.next_local);
+                let loc = self.locals.len();
+                self.locals.push(type_id);
                 (scope, Location::Local(loc))
             }
             None => {
@@ -143,12 +136,11 @@ impl SymbolTable {
         name: &str,
         func: GenericFn,
     ) -> Result<Location, SemanticError> {
-        let (scope, location) = match self.locals.last_mut() {
+        let (scope, location) = match self.scopes.last_mut() {
             Some(scope) => {
-                let loc = self.next_local;
-                self.next_local += 1;
-                self.max_local = self.max_local.max(self.next_local);
-                (scope, Location::Local(loc))
+                let loc = self.locals.len();
+                (scope, Location::Local(loc));
+                unimplemented!()
             }
             None => {
                 let loc = Location::Global(self.global.len());

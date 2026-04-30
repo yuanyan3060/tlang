@@ -19,8 +19,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     let program = parser.parse_program()?;
     println!("{:#?}", program);
 
-    let pkg = compiler::compile(&program)?;
-    let mut vm = Vm::new();
-    vm.execute(&pkg)?;
+    compiler::wasm::compile(&program)?;
+    //let pkg = compiler::compile(&program)?;
+    //let mut vm = Vm::new();
+    //vm.execute(&pkg)?;
     Ok(())
 }

@@ -1,3 +1,5 @@
+pub mod wasm;
+
 use std::collections::HashMap;
 
 use indexmap::IndexSet;
@@ -109,8 +111,8 @@ impl Compiler {
         Ok(Function::Custom {
             name: f.name.to_string(),
             codes,
-            local_var_cnt: f.local_cnt as u32,
-            temp_var_cnt: f.temp_cnt as u32,
+            local_var_cnt: f.locals.len() as u32,
+            temp_var_cnt: f.temps.len() as u32,
         })
     }
 

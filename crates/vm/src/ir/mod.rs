@@ -116,8 +116,8 @@ pub struct Function {
     pub name: String,
     pub args: Vec<TypeId>,
     pub blocks: Vec<BasicBlock>,
-    pub temp_cnt: usize,
-    pub local_cnt: usize,
+    pub temps: Vec<TypeId>,
+    pub locals: Vec<TypeId>,
     pub ret: Option<TypeId>,
 }
 
@@ -149,7 +149,7 @@ pub enum Terminator {
 }
 
 pub struct IrBuilder {
-    next_temp: usize,
+    temps: Vec<TypeId>,
     loop_stack: Vec<(BlockId, BlockId)>,
     blocks: Vec<IrBasicBlock>,
     curr: BlockId,
@@ -165,17 +165,17 @@ impl IrBuilder {
         };
 
         Self {
-            next_temp: 0,
+            temps: Vec::new(),
             loop_stack: Vec::new(),
             blocks: vec![block],
             curr,
         }
     }
 
-    pub fn new_temp(&mut self) -> usize {
-        let next = self.next_temp;
-        self.next_temp += 1;
-        next
+    pub fn add_temp(&mut self, type_id: TypeId) -> usize {
+        let id = self.temps.len();
+        self.temps.push(type_id);
+        id
     }
 
     pub fn new_block(&mut self) -> BlockId {
@@ -190,10 +190,6 @@ impl IrBuilder {
 
     pub fn set_curr(&mut self, id: BlockId) {
         self.curr = id
-    }
-
-    pub fn temp_count(&self) -> usize {
-        self.next_temp
     }
 
     pub fn emit(&mut self, inst: Instruction) {
@@ -225,8 +221,6 @@ impl IrBuilder {
             self.emit_term(Terminator::Ret(None));
         }
 
-        let temp_cnt = self.temp_count();
-        println!("temp_cnt {}", temp_cnt);
         let mut blocks = Vec::new();
 
         for block in self.blocks {
@@ -248,8 +242,8 @@ impl IrBuilder {
             name: fn_def.name.to_string(),
             args,
             blocks,
-            temp_cnt,
-            local_cnt: fn_def.local_count,
+            temps: self.temps,
+            locals: fn_def.locals.clone(),
             ret: fn_def.return_type,
         }
     }
@@ -380,8 +374,8 @@ impl IrBuilder {
                 token::Literal::Float(f) => Operand::ConstFloat(*f),
                 token::Literal::String(s) => Operand::ConstString(s.to_string()),
             },
-            type_ast::Expr::Unary { op, expr, .. } => {
-                let dst = Variable::Temp(self.new_temp());
+            type_ast::Expr::Unary { op, expr, ty, .. } => {
+                let dst = Variable::Temp(self.add_temp(*ty));
                 let inst = Instruction::UnaryOp {
                     dst,
                     op: *op,
@@ -391,9 +385,9 @@ impl IrBuilder {
                 Operand::Variable(dst)
             }
             type_ast::Expr::Binary {
-                left, op, right, ..
+                left, op, right, ty, ..
             } => {
-                let dst = Variable::Temp(self.new_temp());
+                let dst = Variable::Temp(self.add_temp(*ty));
                 let inst = Instruction::BinaryOp {
                     dst,
                     op: *op,
@@ -403,7 +397,7 @@ impl IrBuilder {
                 self.emit(inst);
                 Operand::Variable(dst)
             }
-            type_ast::Expr::Call { func, args, .. } => {
+            type_ast::Expr::Call { func, args, ty, .. } => {
                 for arg in args {
                     let param = Instruction::Param {
                         src: self.vist_expr(arg),
@@ -411,7 +405,7 @@ impl IrBuilder {
                     self.emit(param);
                 }
 
-                let dst = Variable::Temp(self.new_temp());
+                let dst = Variable::Temp(self.add_temp(*ty));
                 let inst = Instruction::Call {
                     dst,
                     func: self.vist_expr(func),
@@ -421,8 +415,8 @@ impl IrBuilder {
                 self.emit(inst);
                 Operand::Variable(dst)
             }
-            type_ast::Expr::Index { target, index, .. } => {
-                let dst = Variable::Temp(self.new_temp());
+            type_ast::Expr::Index { target, index, ty, .. } => {
+                let dst = Variable::Temp(self.add_temp(*ty));
 
                 let inst = Instruction::Index {
                     dst,
@@ -437,9 +431,10 @@ impl IrBuilder {
                 target,
                 member,
                 offset,
+                member_ty,
                 ..
             } => {
-                let dst = Variable::Temp(self.new_temp());
+                let dst = Variable::Temp(self.add_temp(*member_ty));
 
                 let inst = Instruction::Member {
                     dst,
@@ -451,8 +446,8 @@ impl IrBuilder {
                 self.emit(inst);
                 Operand::Variable(dst)
             }
-            type_ast::Expr::Struct { fields, .. } => {
-                let dst = Variable::Temp(self.new_temp());
+            type_ast::Expr::Struct { fields, struct_ty, .. } => {
+                let dst = Variable::Temp(self.add_temp(*struct_ty));
                 let inst = Instruction::NewObject {
                     dst,
                     size: fields.len(),
@@ -470,8 +465,8 @@ impl IrBuilder {
                 Operand::Variable(dst)
             }
             type_ast::Expr::Path { location, .. } => Operand::Variable(Variable::from(*location)),
-            type_ast::Expr::Method { location, .. } => {
-                let dst = Variable::Temp(self.new_temp());
+            type_ast::Expr::Method { location, method_ty, .. } => {
+                let dst = Variable::Temp(self.add_temp(*method_ty));
 
                 let inst = Instruction::Load {
                     to: dst,

@@ -698,7 +698,7 @@ fn analysis_func(
 
     let typed_body = analysis_block(semantic, &fn_def.body, return_type)?;
 
-    let local_count = semantic.symbol_table.take_max_local_count();
+    let locals = semantic.symbol_table.take_locals();
     semantic.symbol_table.exit_scope();
 
     let idx = semantic
@@ -712,7 +712,7 @@ fn analysis_func(
     let typed_fn_def = type_ast::FunctionDef {
         name: fn_def.name.to_string(),
         args: type_args,
-        local_count,
+        locals,
         return_type,
         body: typed_body,
         idx,
